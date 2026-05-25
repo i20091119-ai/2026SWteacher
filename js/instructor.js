@@ -43,11 +43,13 @@ window.Instructor = {
         stateEl.textContent = `${ds} ${on ? "등록" : "해제"} 중...`;
         console.log("[insClick]", ds, "→", on ? "등록" : "해제");
         try {
-          await API.saveUnavailable(ds, on);
+          const res = await API.saveUnavailable(ds, on);
+          console.log("[insClick] 응답", res);
           await Instructor.loadMonth();
+          stateEl.textContent = `${ds} ${on ? "등록 완료" : "해제 완료"}`;
         } catch (e) {
-          stateEl.textContent = prev;
-          alert("저장 실패: " + e.message);
+          stateEl.textContent = `${ds} 실패: ${e.message}`;
+          console.error("[insClick] 실패", e);
         }
       },
     });
