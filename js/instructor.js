@@ -37,12 +37,16 @@ window.Instructor = {
         });
       },
       onDayClick: async (ds, cell) => {
-        // 토글
         const on = !mineDates.has(ds);
+        const stateEl = document.getElementById("insSubmitState");
+        const prev = stateEl.textContent;
+        stateEl.textContent = `${ds} ${on ? "등록" : "해제"} 중...`;
+        console.log("[insClick]", ds, "→", on ? "등록" : "해제");
         try {
           await API.saveUnavailable(ds, on);
           await Instructor.loadMonth();
         } catch (e) {
+          stateEl.textContent = prev;
           alert("저장 실패: " + e.message);
         }
       },
