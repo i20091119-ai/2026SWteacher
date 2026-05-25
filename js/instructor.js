@@ -10,7 +10,13 @@ window.Instructor = {
   async loadMonth() {
     const ym = document.getElementById("insMonth").value;
     const data = await API.getMonth(ym);
-    console.log("[loadMonth]", ym, "me=", JSON.stringify(STATE.user.name), "unavails=", data.unavails);
+    const me = STATE.user.name;
+    const myUnavails = (data.unavails || []).filter((u) => u.name === me);
+    console.log("[loadMonth]", ym, "me=", JSON.stringify(me),
+      "전체 unavails 수=", (data.unavails || []).length,
+      "내 unavails 수=", myUnavails.length,
+      "unavails 샘플:", (data.unavails || []).slice(0, 3),
+    );
     STATE.cache.monthData[ym] = data;
     Instructor.renderCalendar(ym, data);
     Instructor.renderUnavailList(data);
@@ -39,18 +45,20 @@ window.Instructor = {
       },
       onDayClick: async (ds, cell) => {
         const on = !mineDates.has(ds);
-        const stateEl = document.getElementById("insSubmitState");
-        const prev = stateEl.textContent;
-        stateEl.textContent = `${ds} ${on ? "등록" : "해제"} 중...`;
+        // 즉각적인 시각 피드백 (서버 응답 전에 셀 색 토글)
+        if (on) cell.classList.add("unavail");
+        else cell.classList.remove("unavail");
         console.log("[insClick]", ds, "→", on ? "등록" : "해제");
         try {
           const res = await API.saveUnavailable(ds, on);
           console.log("[insClick] 응답", res);
           await Instructor.loadMonth();
-          stateEl.textContent = `${ds} ${on ? "등록 완료" : "해제 완료"}`;
         } catch (e) {
-          stateEl.textContent = `${ds} 실패: ${e.message}`;
+          // 실패 시 색 되돌리기
+          if (on) cell.classList.remove("unavail");
+          else cell.classList.add("unavail");
           console.error("[insClick] 실패", e);
+          alert("저장 실패: " + e.message);
         }
       },
     });
