@@ -174,46 +174,43 @@ function ensureTabs() {
 }
 
 function seedDefaultsIfEmpty() {
-  const ins = readAll(getSheet(TABS.instructors));
+  const insSh = getSheet(TABS.instructors);
+  const ins = readAll(insSh);
   if (!ins.length) {
-    const sh = getSheet(TABS.instructors);
-    ["김경화", "신미정", "이경향", "이윤미"].forEach((n, i) => sh.appendRow([n, i + 1]));
+    const rows = ["김경화", "신미정", "이경향", "이윤미"].map((n, i) => [n, i + 1]);
+    insSh.getRange(insSh.getLastRow() + 1, 1, rows.length, 2).setValues(rows);
   }
+  // 설정/공휴일 시드를 한 번의 setValues 호출로 처리 (개별 setSetting 22회 → 1회)
   const settings = readSettings();
-  const setDefault = (k, v) => { if (settings[k] === undefined) setSetting(k, v); };
-  setDefault("rate.explain", 30000);
-  setDefault("rate.other", 20000);
-  setDefault("weeklyCap", 14);
-  setDefault("admin.whitelist", "i20091119@gmail.com");
-  // 2026년 한국 공휴일 (대체공휴일 포함). 휴관 여부는 운영 일정에 따라 시트에서 조정 가능.
   const HOLIDAYS_2026 = [
-    "2026-01-01", // 신정 (목)
-    "2026-02-16", // 설 연휴 (월)
-    "2026-02-17", // 설날 (화)
-    "2026-02-18", // 설 연휴 (수)
-    "2026-03-01", // 삼일절 (일)
-    "2026-03-02", // 삼일절 대체 (월)
-    "2026-05-05", // 어린이날 (화)
-    "2026-05-24", // 부처님오신날 (일)
-    "2026-05-25", // 부처님오신날 대체 (월)
-    "2026-06-06", // 현충일 (토)
-    "2026-08-15", // 광복절 (토)
-    "2026-08-17", // 광복절 대체 (월)
-    "2026-09-24", // 추석 연휴 (목)
-    "2026-09-25", // 추석 (금)
-    "2026-09-26", // 추석 연휴 (토)
-    "2026-09-28", // 추석 대체 (월)
-    "2026-10-03", // 개천절 (토)
-    "2026-10-05", // 개천절 대체 (월)
-    "2026-10-09", // 한글날 (금)
-    "2026-12-25", // 성탄절 (금)
+    "2026-01-01","2026-02-16","2026-02-17","2026-02-18",
+    "2026-03-01","2026-03-02","2026-05-05","2026-05-24","2026-05-25",
+    "2026-06-06","2026-08-15","2026-08-17",
+    "2026-09-24","2026-09-25","2026-09-26","2026-09-28",
+    "2026-10-03","2026-10-05","2026-10-09","2026-12-25",
   ];
-  HOLIDAYS_2026.forEach((d) => setDefault("holiday." + d, 1));
+  const defaults = [
+    ["rate.explain", 30000],
+    ["rate.other", 20000],
+    ["weeklyCap", 14],
+    ["admin.whitelist", "i20091119@gmail.com"],
+  ].concat(HOLIDAYS_2026.map((d) => ["holiday." + d, 1]));
+  const missing = defaults.filter(([k]) => settings[k] === undefined);
+  if (missing.length) {
+    const sh = getSheet(TABS.settings);
+    sh.getRange(sh.getLastRow() + 1, 1, missing.length, 2).setValues(missing);
+  }
   // 2026-06 시드: 가족체험 0 (보조=신미정), 주말어드벤처 2 (토오전=이경향)
-  const seed = readAll(getSheet(TABS.seed));
+  const seedSh = getSheet(TABS.seed);
+  const seed = readAll(seedSh);
   const has = (ym, kind) => seed.some((s) => String(s.ym) === ym && String(s.kind) === kind);
-  if (!has("2026-06", "가족체험")) getSheet(TABS.seed).appendRow(["2026-06", "가족체험", 0, new Date().toISOString()]);
-  if (!has("2026-06", "주말어드벤처")) getSheet(TABS.seed).appendRow(["2026-06", "주말어드벤처", 2, new Date().toISOString()]);
+  const seedRows = [];
+  const now = new Date().toISOString();
+  if (!has("2026-06", "가족체험")) seedRows.push(["2026-06", "가족체험", 0, now]);
+  if (!has("2026-06", "주말어드벤처")) seedRows.push(["2026-06", "주말어드벤처", 2, now]);
+  if (seedRows.length) {
+    seedSh.getRange(seedSh.getLastRow() + 1, 1, seedRows.length, 4).setValues(seedRows);
+  }
 }
 
 function readSettings() {

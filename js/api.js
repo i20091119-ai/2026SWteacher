@@ -13,7 +13,8 @@ window.api = async function (action, payload) {
   };
   let res;
   const ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
-  const timer = ctrl ? setTimeout(() => ctrl.abort(), 20000) : null;
+  const timeoutMs = action === "bootstrap" ? 90000 : 30000;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
   try {
     res = await fetch(endpoint, {
       method: "POST",
@@ -24,7 +25,7 @@ window.api = async function (action, payload) {
     });
   } catch (e) {
     if (e && e.name === "AbortError") {
-      throw new Error(`GAS 응답이 20초 내에 오지 않았습니다 (action=${action}). GAS 배포 상태/네트워크를 확인하세요.`);
+      throw new Error(`GAS 응답이 ${timeoutMs / 1000}초 내에 오지 않았습니다 (action=${action}). GAS 배포 상태/네트워크를 확인하세요.`);
     }
     throw new Error("네트워크 오류 (GAS 호출 실패): " + e.message);
   } finally {
