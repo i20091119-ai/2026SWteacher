@@ -12,15 +12,23 @@ window.api = async function (action, payload) {
       : null,
   };
   let res;
+  const ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), 20000) : null;
   try {
     res = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify(body),
       redirect: "follow",
+      signal: ctrl ? ctrl.signal : undefined,
     });
   } catch (e) {
+    if (e && e.name === "AbortError") {
+      throw new Error(`GAS 응답이 20초 내에 오지 않았습니다 (action=${action}). GAS 배포 상태/네트워크를 확인하세요.`);
+    }
     throw new Error("네트워크 오류 (GAS 호출 실패): " + e.message);
+  } finally {
+    if (timer) clearTimeout(timer);
   }
   if (!res.ok) throw new Error(`HTTP ${res.status} (action=${action})`);
   const text = await res.text();
