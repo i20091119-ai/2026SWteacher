@@ -60,6 +60,7 @@
 | publish.2026-06 | 1 |
 
 - 단가 / 주간 상한 / 관리자 화이트리스트(쉼표 다중 가능) / 휴관일·공휴일(`holiday.YYYY-MM-DD=1`) / 일정 확정 공개 토글(`publish.YYYY-MM=1`).
+- 첫 GAS 호출 시 **2026년 한국 공휴일이 자동 시드**됩니다 (신정·설·삼일절·어린이날·부처님오신날·현충일·광복절·추석·개천절·한글날·성탄절 + 토·일 겹침 시 대체공휴일). 운영 일정상 휴관이 아닌 공휴일은 시트에서 해당 행을 삭제하거나 값을 비우면 됩니다.
 
 ## `이월`
 | srcYm | name | overflowExplainH | compensationAmount | recommendedH | status | note |
