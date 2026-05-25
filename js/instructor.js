@@ -1,12 +1,10 @@
 window.Instructor = {
-  selectedDate: null,
   async render() {
     document.getElementById("whoami").textContent = `강사 · ${STATE.user.name}`;
     const monthInput = document.getElementById("insMonth");
     if (!monthInput.value) monthInput.value = todayYm();
     monthInput.onchange = () => Instructor.loadMonth();
     document.getElementById("insSubmitBtn").onclick = Instructor.submit;
-    document.getElementById("insReasonSave").onclick = Instructor.saveReasonForSelected;
     await Instructor.loadMonth();
   },
   async loadMonth() {
@@ -29,15 +27,7 @@ window.Instructor = {
     const grid = Cal.buildGrid(ym, {
       holidays,
       renderDay: (ds, cell) => {
-        if (mineDates.has(ds)) {
-          cell.classList.add("unavail");
-          const r = (data.unavails.find((u) => u.name === me && u.date === ds) || {}).reason;
-          if (r) {
-            const t = document.createElement("div");
-            t.className = "muted"; t.textContent = r;
-            cell.appendChild(t);
-          }
-        }
+        if (mineDates.has(ds)) cell.classList.add("unavail");
         // 확정된 본인 배치 표시
         (data.assignments || []).filter((a) => a.name === me && a.date === ds).forEach((a) => {
           const s = document.createElement("div");
@@ -49,10 +39,8 @@ window.Instructor = {
       onDayClick: async (ds, cell) => {
         // 토글
         const on = !mineDates.has(ds);
-        const reason = document.getElementById("insReason").value || "";
         try {
-          await API.saveUnavailable(ds, on, reason);
-          Instructor.selectedDate = ds;
+          await API.saveUnavailable(ds, on);
           await Instructor.loadMonth();
         } catch (e) {
           alert("저장 실패: " + e.message);
@@ -61,23 +49,17 @@ window.Instructor = {
     });
     wrap.appendChild(grid);
   },
-  async saveReasonForSelected() {
-    if (!Instructor.selectedDate) { alert("먼저 달력에서 날짜를 누르세요."); return; }
-    const reason = document.getElementById("insReason").value || "";
-    await API.saveUnavailable(Instructor.selectedDate, true, reason);
-    await Instructor.loadMonth();
-  },
   renderUnavailList(data) {
     const me = STATE.user.name;
     const ul = document.getElementById("insUnavailList");
     ul.innerHTML = "";
     (data.unavails || []).filter((u) => u.name === me).sort((a, b) => a.date.localeCompare(b.date)).forEach((u) => {
       const li = document.createElement("li");
-      li.innerHTML = `<span>${u.date}${u.reason ? " — " + u.reason : ""}</span>`;
+      li.innerHTML = `<span>${u.date}</span>`;
       const btn = document.createElement("button");
       btn.type = "button"; btn.textContent = "해제";
       btn.onclick = async () => {
-        await API.saveUnavailable(u.date, false, "");
+        await API.saveUnavailable(u.date, false);
         await Instructor.loadMonth();
       };
       li.appendChild(btn);
