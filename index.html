@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>경남수학문화관 SW해설강사 근무 일정 관리</title>
+<link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+<header id="topbar" class="hidden">
+  <div class="brand">경남수학문화관 · SW해설강사 일정</div>
+  <div class="who"><span id="whoami"></span> <button id="logoutBtn" type="button">로그아웃</button></div>
+</header>
+
+<main id="app">
+  <!-- 로그인 -->
+  <section id="page-login" class="page">
+    <h1>로그인</h1>
+    <div class="login-grid">
+      <div class="card">
+        <h2>강사용</h2>
+        <p class="muted">본인 이름을 누르면 로그인됩니다.</p>
+        <div id="instructorButtons" class="btn-row"></div>
+      </div>
+      <div class="card">
+        <h2>관리자용</h2>
+        <p class="muted">Google 계정으로 로그인하세요. 화이트리스트에 등록된 계정만 접근할 수 있습니다.</p>
+        <div id="g_id_signin"></div>
+        <div id="adminLoginMsg" class="muted"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 강사용 -->
+  <section id="page-instructor" class="page hidden">
+    <h1>강사용</h1>
+
+    <div class="toolbar">
+      <label>월
+        <input type="month" id="insMonth" />
+      </label>
+      <button id="insSubmitBtn" type="button">제출 완료</button>
+      <span id="insSubmitState" class="muted"></span>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <h2>근무불가일 등록</h2>
+        <p class="muted">달력에서 날짜를 누르면 등록/해제됩니다.</p>
+        <div id="insCalendar" class="calendar"></div>
+        <div class="reason-row">
+          <input type="text" id="insReason" placeholder="(선택) 사유 메모" />
+          <button id="insReasonSave" type="button">선택일에 사유 저장</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>내 근무불가일</h2>
+        <ul id="insUnavailList"></ul>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>확정 근무표(전체)</h2>
+      <div id="insSchedule"></div>
+    </div>
+  </section>
+
+  <!-- 관리자용 -->
+  <section id="page-admin" class="page hidden">
+    <h1>관리자</h1>
+
+    <div class="toolbar">
+      <label>월
+        <input type="month" id="admMonth" />
+      </label>
+      <div class="seg">
+        <button type="button" data-view="actual" class="active">실제 근무 뷰</button>
+        <button type="button" data-view="ledger">장부 뷰</button>
+      </div>
+      <label>강사 필터
+        <select id="admFilter"><option value="">전체</option></select>
+      </label>
+      <button id="admPrintBtn" type="button">장부 인쇄/내보내기</button>
+    </div>
+
+    <div class="card" id="admSubmitStatus">
+      <h2>근무불가일 제출 현황</h2>
+      <table id="submitTable"></table>
+    </div>
+
+    <div class="card">
+      <h2>전월 이월 안내</h2>
+      <div id="admCarryover"></div>
+    </div>
+
+    <div class="card">
+      <h2>다음 차례 추천</h2>
+      <div id="admNextUp"></div>
+    </div>
+
+    <div class="card">
+      <h2>월별 캘린더 편성</h2>
+      <div id="admCalendar" class="calendar"></div>
+    </div>
+
+    <div class="card">
+      <h2>주간 합계 / 14시간 점검</h2>
+      <div id="admWeekly"></div>
+    </div>
+
+    <div class="card">
+      <h2>월별 · 개인별 집계</h2>
+      <div id="admSummary"></div>
+    </div>
+  </section>
+</main>
+
+<!-- 배치 편집 모달 -->
+<div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-body">
+    <h3 id="modalTitle">배치 추가/편집</h3>
+    <div id="modalContent"></div>
+    <div class="modal-actions">
+      <button id="modalCancel" type="button">취소</button>
+      <button id="modalSave" type="button" class="primary">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- Google Identity Services -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+
+<script src="js/config.js"></script>
+<script src="js/state.js"></script>
+<script src="js/api.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/calendar.js"></script>
+<script src="js/rotation.js"></script>
+<script src="js/ledger.js"></script>
+<script src="js/carryover.js"></script>
+<script src="js/instructor.js"></script>
+<script src="js/admin.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

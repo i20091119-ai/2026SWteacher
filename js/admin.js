@@ -1,0 +1,300 @@
+window.Admin = {
+  view: "actual",
+  data: null,
+
+  async render() {
+    document.getElementById("whoami").textContent = `관리자 · ${STATE.user.email || ""}`;
+    const monthInput = document.getElementById("admMonth");
+    if (!monthInput.value) monthInput.value = todayYm();
+    monthInput.onchange = () => Admin.loadMonth();
+    document.querySelectorAll(".seg button").forEach((b) => {
+      b.onclick = () => {
+        document.querySelectorAll(".seg button").forEach((x) => x.classList.remove("active"));
+        b.classList.add("active");
+        Admin.view = b.dataset.view;
+        Admin.renderViews();
+      };
+    });
+    document.getElementById("admPrintBtn").onclick = () => window.print();
+    document.getElementById("admFilter").onchange = () => Admin.renderViews();
+    await Admin.loadMonth();
+  },
+
+  async loadMonth() {
+    const ym = document.getElementById("admMonth").value;
+    const data = await API.getMonth(ym);
+    Admin.data = data;
+    STATE.cache.monthData[ym] = data;
+    // 강사 필터
+    const sel = document.getElementById("admFilter");
+    sel.innerHTML = '<option value="">전체</option>' +
+      STATE.instructors.map((n) => `<option>${n}</option>`).join("");
+    Admin.renderSubmit(data);
+    await Admin.renderCarryover(ym);
+    Admin.renderNextUp(ym, data);
+    Admin.renderViews();
+  },
+
+  renderSubmit(data) {
+    const ym = document.getElementById("admMonth").value;
+    const tbl = document.getElementById("submitTable");
+    let allSubmitted = true;
+    const rows = STATE.instructors.map((n) => {
+      const s = (data.submits || []).find((x) => x.ym === ym && x.name === n);
+      if (!s || !s.submitted) allSubmitted = false;
+      return `<tr><td>${n}</td><td>${s && s.submitted ? "제출" : "미제출"}</td><td>${s && s.submittedAt ? s.submittedAt : "-"}</td></tr>`;
+    }).join("");
+    tbl.innerHTML = `<thead><tr><th>강사</th><th>제출 여부</th><th>제출 일시</th></tr></thead><tbody>${rows}</tbody>` +
+      (allSubmitted ? '<caption class="ok">전원 제출 · 편성 가능</caption>' : '<caption class="warn">미제출자 있음</caption>');
+  },
+
+  async renderCarryover(ym) {
+    const target = document.getElementById("admCarryover");
+    const prev = prevYm(ym);
+    try {
+      const prevData = await API.getMonth(prev);
+      const co = Carryover.computeFromMonth(prev, prevData.assignments || []);
+      const names = Object.keys(co);
+      if (!names.length) {
+        target.innerHTML = `<div class="muted">${prev} 기준 이월 대상이 없습니다.</div>`;
+        return;
+      }
+      target.innerHTML = `<table><thead><tr><th>강사</th><th>해설 초과(h)</th><th>보전 금액</th><th>이월 권장(h, ×1.5)</th></tr></thead><tbody>${
+        names.map((n) => {
+          const r = co[n];
+          return `<tr><td>${n}</td><td>${r.overflowExplainH}</td><td>${r.compensationAmount.toLocaleString()}</td><td>${r.recommendedH}</td></tr>`;
+        }).join("")
+      }</tbody></table>`;
+    } catch (e) {
+      target.innerHTML = `<div class="muted">전월(${prev}) 데이터 로드 실패: ${e.message}</div>`;
+    }
+  },
+
+  renderNextUp(ym, data) {
+    const target = document.getElementById("admNextUp");
+    const ins = STATE.instructors;
+    // 시드 포인터: seeds[kind] (0~3)
+    const seedFamily = (data.seeds || []).find((s) => s.ym === ym && s.kind === "가족체험");
+    const seedWeekend = (data.seeds || []).find((s) => s.ym === ym && s.kind === "주말어드벤처");
+    const sF = seedFamily ? Number(seedFamily.pointer) : 0;
+    const sW = seedWeekend ? Number(seedWeekend.pointer) : 0;
+    const fam = Rotation.nextFamily(ym, ins, sF, data.assignments || [], {});
+    const wk = Rotation.nextWeekend(ym, ins, sW, data.assignments || []);
+    target.innerHTML = `
+      <div class="grid-2">
+        <div>
+          <h3>가족체험SW · 다음 회차</h3>
+          <p>주강사: <b>${fam.main}</b>${fam.main === "이상우" ? `<span class="muted"> (내부 순번: ${fam.mainInternal})</span>` : ""}<br>
+          보조강사: <b>${fam.sub}</b><br>
+          <span class="muted">현재 ${ym} 가족체험 편성 회차: ${fam.placedCount} · 다음 회차 후 포인터: ${fam.nextPointerAfter}</span></p>
+          <label>가족체험 시작 포인터(이 달):
+            <input type="number" min="0" max="3" value="${sF}" id="seedFamily" />
+          </label>
+          <button type="button" id="seedFamilySave">저장</button>
+        </div>
+        <div>
+          <h3>주말어드벤처 · 다음 묶음</h3>
+          <ul>${wk.slots.map((s) => `<li>${s.role}: <b>${s.name}</b></li>`).join("")}</ul>
+          <span class="muted">현재 ${ym} 주말어드벤처 편성 묶음: ${wk.placedBundles} · 묶음 후 포인터: ${wk.nextPointerAfter}</span><br>
+          <label>주말어드벤처 시작 포인터(이 달):
+            <input type="number" min="0" max="3" value="${sW}" id="seedWeekend" />
+          </label>
+          <button type="button" id="seedWeekendSave">저장</button>
+        </div>
+      </div>
+      <p class="muted">자동 배치는 하지 않습니다. 캘린더에서 직접 배치하세요.</p>
+    `;
+    document.getElementById("seedFamilySave").onclick = async () => {
+      const v = Number(document.getElementById("seedFamily").value);
+      await API.setSeed(ym, "가족체험", v);
+      await Admin.loadMonth();
+    };
+    document.getElementById("seedWeekendSave").onclick = async () => {
+      const v = Number(document.getElementById("seedWeekend").value);
+      await API.setSeed(ym, "주말어드벤처", v);
+      await Admin.loadMonth();
+    };
+  },
+
+  renderViews() {
+    Admin.renderCalendarView();
+    Admin.renderWeekly();
+    Admin.renderSummary();
+  },
+
+  renderCalendarView() {
+    const wrap = document.getElementById("admCalendar");
+    wrap.innerHTML = "";
+    const ym = document.getElementById("admMonth").value;
+    const data = Admin.data || { assignments: [], unavails: [], holidays: [] };
+    const filterName = document.getElementById("admFilter").value;
+    const holidays = new Set(data.holidays || []);
+    const unavByDate = {};
+    (data.unavails || []).forEach((u) => { (unavByDate[u.date] ||= []).push(u); });
+    const visibleKinds = Admin.view === "ledger"
+      ? null  // 장부 뷰는 모든 항목 표시
+      : (a) => a.kind !== "연구이월" && a.kind !== "지원이월";
+    const grid = Cal.buildGrid(ym, {
+      holidays,
+      renderDay: (ds, cell) => {
+        if (unavByDate[ds] && unavByDate[ds].length) {
+          const flag = document.createElement("div");
+          flag.className = "uflag";
+          flag.textContent = "불가:" + unavByDate[ds].map((u) => u.name).join(",");
+          cell.appendChild(flag);
+        }
+        let items = (data.assignments || []).filter((a) => a.date === ds);
+        if (visibleKinds) items = items.filter(visibleKinds);
+        if (filterName) items = items.filter((a) => a.name === filterName);
+        items.forEach((a) => {
+          const s = document.createElement("div");
+          s.className = `slot kind-${a.kind.replace(/[()]/g, "")}`;
+          s.dataset.stop = "1";
+          s.textContent = `${Admin.labelOf(a)} · ${a.name} (${Number(a.hExplain || 0) + Number(a.hSupport || 0) + Number(a.hResearch || 0)}h)`;
+          s.onclick = () => Admin.openModal(a);
+          cell.appendChild(s);
+        });
+        const add = document.createElement("div");
+        add.className = "add"; add.textContent = "+ 추가"; add.dataset.stop = "1";
+        add.onclick = () => Admin.openModal({ date: ds });
+        cell.appendChild(add);
+      },
+    });
+    wrap.appendChild(grid);
+  },
+
+  labelOf(a) {
+    if (a.form && a.role) return `${a.kind}·${a.form}·${a.role}`;
+    if (a.form) return `${a.kind}·${a.form}`;
+    return a.kind;
+  },
+
+  renderWeekly() {
+    const wrap = document.getElementById("admWeekly");
+    const ym = document.getElementById("admMonth").value;
+    const data = Admin.data || { assignments: [] };
+    const filterName = document.getElementById("admFilter").value;
+    const useLedger = Admin.view === "ledger";
+    const view = useLedger
+      ? Ledger.ledgerView(ym, data.assignments || [])
+      : Ledger.actualView(ym, data.assignments || []);
+    const names = Object.keys(view).filter((n) => !filterName || n === filterName);
+    let html = "";
+    names.forEach((n) => {
+      const rows = useLedger ? view[n].weeks : view[n];
+      html += `<h3>${n}</h3>`;
+      html += `<table><thead><tr><th>주 시작(일)</th><th>해설</th><th>지원</th><th>연구</th><th>합계</th>${useLedger ? "<th>잘린 해설</th>" : "<th>초과</th>"}</tr></thead><tbody>`;
+      rows.forEach((w) => {
+        const tag = useLedger
+          ? (w.cutExplain > 0 ? "warn" : "")
+          : (w.over > 0 ? "warn" : "");
+        const last = useLedger ? w.cutExplain : w.over;
+        html += `<tr class="${tag}"><td>${w.wkStart}</td><td>${w.hExplain}</td><td>${w.hSupport}</td><td>${w.hResearch}</td><td>${w.total}</td><td>${last}</td></tr>`;
+      });
+      html += `</tbody></table>`;
+      if (useLedger) {
+        const t = view[n].totals;
+        html += `<p>월 합계 — 해설 ${t.hExplain}h · 지원 ${t.hSupport}h · 연구 ${t.hResearch}h · 금액 ${t.amount.toLocaleString()}원</p>`;
+      }
+    });
+    wrap.innerHTML = html || '<div class="muted">데이터 없음</div>';
+  },
+
+  renderSummary() {
+    const wrap = document.getElementById("admSummary");
+    const ym = document.getElementById("admMonth").value;
+    const data = Admin.data || { assignments: [] };
+    const ass = data.assignments || [];
+    // 월별 유형별 집계
+    const kinds = ["해설", "연구", "지원", "연구이월", "지원이월"];
+    const byKind = {};
+    kinds.forEach((k) => (byKind[k] = { h: 0, amt: 0 }));
+    ass.forEach((a) => {
+      const h = Number(a.hExplain || 0) + Number(a.hSupport || 0) + Number(a.hResearch || 0);
+      if (!byKind[a.kind]) byKind[a.kind] = { h: 0, amt: 0 };
+      byKind[a.kind].h += h;
+      byKind[a.kind].amt += (a.kind === "해설")
+        ? Number(a.hExplain || 0) * Ledger.rateExplain + (Number(a.hSupport || 0) + Number(a.hResearch || 0)) * Ledger.rateOther
+        : (Number(a.hExplain || 0) * Ledger.rateExplain + (Number(a.hSupport || 0) + Number(a.hResearch || 0)) * Ledger.rateOther);
+    });
+    let html = `<h3>월별 유형별 집계 (${ym})</h3>`;
+    html += "<table><thead><tr><th>유형</th><th>시수</th><th>금액</th></tr></thead><tbody>";
+    Object.keys(byKind).forEach((k) => {
+      html += `<tr><td>${k}</td><td>${byKind[k].h}</td><td>${byKind[k].amt.toLocaleString()}</td></tr>`;
+    });
+    html += "</tbody></table>";
+
+    // 강사별 실제 vs 장부 비교
+    const actual = Ledger.actualView(ym, ass);
+    const ledger = Ledger.ledgerView(ym, ass);
+    html += "<h3>강사별 — 실제 vs 장부</h3>";
+    html += "<table><thead><tr><th>강사</th><th>실제 합계(h)</th><th>장부 합계(h)</th><th>장부 금액</th></tr></thead><tbody>";
+    STATE.instructors.forEach((n) => {
+      const aSum = (actual[n] || []).reduce((s, w) => s + w.total, 0);
+      const lTot = (ledger[n] && ledger[n].totals) || { hExplain: 0, hSupport: 0, hResearch: 0, amount: 0 };
+      const lSum = lTot.hExplain + lTot.hSupport + lTot.hResearch;
+      html += `<tr><td>${n}</td><td>${aSum}</td><td>${lSum}</td><td>${lTot.amount.toLocaleString()}</td></tr>`;
+    });
+    html += "</tbody></table>";
+    wrap.innerHTML = html;
+  },
+
+  openModal(a) {
+    const m = document.getElementById("modal");
+    const c = document.getElementById("modalContent");
+    const title = document.getElementById("modalTitle");
+    title.textContent = a.id ? "배치 편집" : "배치 추가";
+    const kinds = ["해설", "연구", "지원", "연구이월", "지원이월"];
+    const forms = ["", "학교체험", "가족체험", "주말어드벤처"];
+    const roles = ["", "주", "보조", "토오전", "토오후", "일오전"];
+    const opt = (arr, v) => arr.map((x) => `<option ${x === v ? "selected" : ""} value="${x}">${x || "-"}</option>`).join("");
+    c.innerHTML = `
+      <div class="grid-2">
+        <label>날짜<input type="date" id="m_date" value="${a.date || ""}"/></label>
+        <label>강사
+          <select id="m_name">
+            ${["", ...STATE.instructors, "이상우"].map((n) => `<option ${n === (a.name || "") ? "selected" : ""}>${n}</option>`).join("")}
+          </select>
+        </label>
+        <label>유형 <select id="m_kind">${opt(kinds, a.kind || "해설")}</select></label>
+        <label>형태 <select id="m_form">${opt(forms, a.form || "")}</select></label>
+        <label>역할 <select id="m_role">${opt(roles, a.role || "")}</select></label>
+        <label>해설시수 <input type="number" step="0.5" id="m_hE" value="${a.hExplain || 0}"/></label>
+        <label>지원시수 <input type="number" step="0.5" id="m_hS" value="${a.hSupport || 0}"/></label>
+        <label>연구시수 <input type="number" step="0.5" id="m_hR" value="${a.hResearch || 0}"/></label>
+      </div>
+      <label>메모 <input type="text" id="m_memo" value="${a.memo || ""}" style="width:100%"/></label>
+      ${a.id ? '<p><button type="button" id="m_del" style="color:#c53030">삭제</button></p>' : ""}
+    `;
+    m.classList.remove("hidden");
+    document.getElementById("modalCancel").onclick = () => m.classList.add("hidden");
+    document.getElementById("modalSave").onclick = async () => {
+      const payload = {
+        id: a.id || null,
+        date: document.getElementById("m_date").value,
+        name: document.getElementById("m_name").value,
+        kind: document.getElementById("m_kind").value,
+        form: document.getElementById("m_form").value,
+        role: document.getElementById("m_role").value,
+        hExplain: Number(document.getElementById("m_hE").value || 0),
+        hSupport: Number(document.getElementById("m_hS").value || 0),
+        hResearch: Number(document.getElementById("m_hR").value || 0),
+        memo: document.getElementById("m_memo").value,
+      };
+      if (!payload.date || !payload.name || !payload.kind) { alert("날짜·강사·유형은 필수입니다."); return; }
+      try {
+        await API.saveAssignment(payload);
+        m.classList.add("hidden");
+        await Admin.loadMonth();
+      } catch (e) { alert("저장 실패: " + e.message); }
+    };
+    if (a.id) {
+      document.getElementById("m_del").onclick = async () => {
+        if (!confirm("삭제하시겠습니까?")) return;
+        await API.deleteAssignment(a.id);
+        m.classList.add("hidden");
+        await Admin.loadMonth();
+      };
+    }
+  },
+};
