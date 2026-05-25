@@ -11,13 +11,29 @@ window.api = async function (action, payload) {
       ? { role: STATE.user.role, name: STATE.user.name || null, idToken: STATE.user.idToken || null }
       : null,
   };
-  const res = await fetch(endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const json = await res.json();
+  let res;
+  try {
+    res = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(body),
+      redirect: "follow",
+    });
+  } catch (e) {
+    throw new Error("네트워크 오류 (GAS 호출 실패): " + e.message);
+  }
+  if (!res.ok) throw new Error(`HTTP ${res.status} (action=${action})`);
+  const text = await res.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch (e) {
+    const looksLikeLogin = text.indexOf("<html") !== -1 || text.indexOf("accounts.google.com") !== -1;
+    if (looksLikeLogin) {
+      throw new Error("GAS가 로그인 페이지를 반환했습니다. 배포 시 '액세스 권한: 모든 사용자'로 새 배포를 만들고 GAS_ENDPOINT를 갱신하세요.");
+    }
+    throw new Error("GAS 응답이 JSON이 아닙니다: " + text.slice(0, 200));
+  }
   if (!json.ok) throw new Error(json.error || "요청 실패");
   return json.data;
 };
