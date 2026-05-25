@@ -9,7 +9,7 @@
 
 const SHEET_ID = "18caVtIkqkm4vJc-gdc-TYFkOxVdE_EzdZRIe8RrTTks";
 // 프론트엔드와 동일한 OAuth 2.0 클라이언트 ID (Google Cloud Console)
-const GOOGLE_OAUTH_CLIENT_ID = "REPLACE_ME.apps.googleusercontent.com";
+const GOOGLE_OAUTH_CLIENT_ID = "79888472929-34mqbk6lr9d5b6j7ugmommpie75ak98i.apps.googleusercontent.com";
 
 const TABS = {
   instructors: "강사",
