@@ -174,14 +174,17 @@ function ensureTabs() {
 }
 
 function seedDefaultsIfEmpty() {
-  const insSh = getSheet(TABS.instructors);
+  const insSh = getSheet(TABS.instructors, ["name", "order"]);
   const ins = readAll(insSh);
   if (!ins.length) {
     const rows = ["김경화", "신미정", "이경향", "이윤미"].map((n, i) => [n, i + 1]);
     insSh.getRange(insSh.getLastRow() + 1, 1, rows.length, 2).setValues(rows);
   }
-  // 설정/공휴일 시드를 한 번의 setValues 호출로 처리 (개별 setSetting 22회 → 1회)
-  const settings = readSettings();
+  // ★ readSettings() 직접 호출 금지 (ensureTabs → seedDefaultsIfEmpty → readSettings → ensureTabs 무한 재귀).
+  //   설정 시트를 한 번만 직접 읽는다.
+  const settingsSh = getSheet(TABS.settings, ["key", "value"]);
+  const settings = {};
+  readAll(settingsSh).forEach((r) => { settings[String(r.key)] = r.value; });
   const HOLIDAYS_2026 = [
     "2026-01-01","2026-02-16","2026-02-17","2026-02-18",
     "2026-03-01","2026-03-02","2026-05-05","2026-05-24","2026-05-25",
@@ -197,8 +200,7 @@ function seedDefaultsIfEmpty() {
   ].concat(HOLIDAYS_2026.map((d) => ["holiday." + d, 1]));
   const missing = defaults.filter(([k]) => settings[k] === undefined);
   if (missing.length) {
-    const sh = getSheet(TABS.settings);
-    sh.getRange(sh.getLastRow() + 1, 1, missing.length, 2).setValues(missing);
+    settingsSh.getRange(settingsSh.getLastRow() + 1, 1, missing.length, 2).setValues(missing);
   }
   // 2026-06 시드: 가족체험 0 (보조=신미정), 주말어드벤처 2 (토오전=이경향)
   const seedSh = getSheet(TABS.seed);
@@ -214,14 +216,11 @@ function seedDefaultsIfEmpty() {
 }
 
 function readSettings() {
-  ensureTabs_safe();
-  const rows = readAll(getSheet(TABS.settings));
+  // ensureTabs를 호출하지 않는다 — 호출자가 책임지거나, getSheet에 헤더 인자로 자체 보장.
+  const rows = readAll(getSheet(TABS.settings, ["key", "value"]));
   const obj = {};
   rows.forEach((r) => { obj[String(r.key)] = r.value; });
   return obj;
-}
-function ensureTabs_safe() {
-  try { ensureTabs(); } catch (e) { /* 초기 1회 무시 */ }
 }
 
 function bootstrap() {
