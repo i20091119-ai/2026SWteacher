@@ -10,6 +10,7 @@ window.Instructor = {
   async loadMonth() {
     const ym = document.getElementById("insMonth").value;
     const data = await API.getMonth(ym);
+    console.log("[loadMonth]", ym, "me=", JSON.stringify(STATE.user.name), "unavails=", data.unavails);
     STATE.cache.monthData[ym] = data;
     Instructor.renderCalendar(ym, data);
     Instructor.renderUnavailList(data);
