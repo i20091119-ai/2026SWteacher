@@ -45,18 +45,36 @@ window.Instructor = {
       },
       onDayClick: async (ds, cell) => {
         const on = !mineDates.has(ds);
-        // 즉각적인 시각 피드백 (서버 응답 전에 셀 색 토글)
-        if (on) cell.classList.add("unavail");
-        else cell.classList.remove("unavail");
+        // 즉각적인 시각 피드백 + 로컬 상태 갱신 (loadMonth 호출 안 함)
+        if (on) {
+          cell.classList.add("unavail");
+          mineDates.add(ds);
+          data.unavails = data.unavails || [];
+          if (!data.unavails.some((u) => u.name === me && u.date === ds)) {
+            data.unavails.push({ name: me, date: ds, reason: "" });
+          }
+        } else {
+          cell.classList.remove("unavail");
+          mineDates.delete(ds);
+          data.unavails = (data.unavails || []).filter((u) => !(u.name === me && u.date === ds));
+        }
+        Instructor.renderUnavailList(data);
         console.log("[insClick]", ds, "→", on ? "등록" : "해제");
         try {
           const res = await API.saveUnavailable(ds, on);
           console.log("[insClick] 응답", res);
-          await Instructor.loadMonth();
         } catch (e) {
-          // 실패 시 색 되돌리기
-          if (on) cell.classList.remove("unavail");
-          else cell.classList.add("unavail");
+          // 실패 시 시각/상태 되돌리기
+          if (on) {
+            cell.classList.remove("unavail");
+            mineDates.delete(ds);
+            data.unavails = data.unavails.filter((u) => !(u.name === me && u.date === ds));
+          } else {
+            cell.classList.add("unavail");
+            mineDates.add(ds);
+            data.unavails.push({ name: me, date: ds, reason: "" });
+          }
+          Instructor.renderUnavailList(data);
           console.error("[insClick] 실패", e);
           alert("저장 실패: " + e.message);
         }
@@ -74,8 +92,16 @@ window.Instructor = {
       const btn = document.createElement("button");
       btn.type = "button"; btn.textContent = "해제";
       btn.onclick = async () => {
-        await API.saveUnavailable(u.date, false);
-        await Instructor.loadMonth();
+        // 로컬 상태에서 즉시 제거 + 캘린더에서 색 제거
+        data.unavails = (data.unavails || []).filter((x) => !(x.name === me && x.date === u.date));
+        Instructor.renderUnavailList(data);
+        const cell = document.querySelector(`#insCalendar .cal-cell[data-date="${u.date}"]`);
+        if (cell) cell.classList.remove("unavail");
+        try {
+          await API.saveUnavailable(u.date, false);
+        } catch (e) {
+          alert("해제 실패: " + e.message);
+        }
       };
       li.appendChild(btn);
       ul.appendChild(li);
