@@ -7,7 +7,7 @@
  *  - 시트 ID와 OAuth 클라이언트 ID를 아래 상수에 채워넣을 것
  */
 
-const SHEET_ID = "18caVtIkqkm4vJc-gdc-TYFkOxVdE_EzdZRIe8RrTTks";
+const SHEET_ID = "1u05m1rwGDqCsWyrVE_W4NLPgOgKjKYZtx9M_xhlWg-g";
 // 프론트엔드와 동일한 OAuth 2.0 클라이언트 ID (Google Cloud Console)
 const GOOGLE_OAUTH_CLIENT_ID = "79888472929-34mqbk6lr9d5b6j7ugmommpie75ak98i.apps.googleusercontent.com";
 
