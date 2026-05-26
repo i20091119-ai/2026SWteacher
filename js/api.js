@@ -43,7 +43,11 @@ window.api = async function (action, payload) {
     }
     throw new Error("GAS 응답이 JSON이 아닙니다: " + text.slice(0, 200));
   }
-  if (!json.ok) throw new Error(json.error || "요청 실패");
+  if (!json.ok) {
+    const msg = json.error || "요청 실패";
+    if (json.stack) console.error("[GAS stack]", json.stack);
+    throw new Error(msg);
+  }
   return json.data;
 };
 

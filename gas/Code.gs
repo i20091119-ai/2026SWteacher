@@ -52,7 +52,12 @@ function doPost(e) {
     const data = dispatch(action, payload || {}, ctx);
     return jsonOut({ ok: true, data });
   } catch (err) {
-    return jsonOut({ ok: false, error: String(err && err.message || err) });
+    return jsonOut({
+      ok: false,
+      error: String(err && err.message || err),
+      stack: String(err && err.stack || ""),
+      action: action || "",
+    });
   }
 }
 
@@ -174,22 +179,28 @@ function getSheet(name, headers) {
   let sh = ss.getSheetByName(name);
   if (!sh) {
     sh = ss.insertSheet(name);
-    if (headers) sh.getRange(1, 1, 1, headers.length).setValues([headers]);
+    if (headers) {
+      try { sh.getRange(1, 1, 1, headers.length).setValues([headers]); } catch (e) {}
+    }
     return sh;
   }
   if (headers) {
-    const last = sh.getLastRow();
-    if (last === 0) {
-      sh.getRange(1, 1, 1, headers.length).setValues([headers]);
-    } else {
-      // 1행이 정확한 헤더가 아니면 1행 위에 헤더를 삽입해 자동 복구
-      const cols = Math.max(sh.getLastColumn(), headers.length);
-      const firstRow = sh.getRange(1, 1, 1, cols).getValues()[0];
-      const matches = headers.every((h, i) => String(firstRow[i] || "") === h);
-      if (!matches) {
-        sh.insertRowBefore(1);
+    try {
+      const last = sh.getLastRow();
+      if (last === 0) {
         sh.getRange(1, 1, 1, headers.length).setValues([headers]);
+      } else {
+        // 1행이 정확한 헤더가 아니면 1행 위에 헤더를 삽입해 자동 복구
+        const cols = Math.max(sh.getLastColumn(), headers.length);
+        const firstRow = sh.getRange(1, 1, 1, cols).getValues()[0];
+        const matches = headers.every((h, i) => String(firstRow[i] == null ? "" : firstRow[i]) === h);
+        if (!matches) {
+          sh.insertRowBefore(1);
+          sh.getRange(1, 1, 1, headers.length).setValues([headers]);
+        }
       }
+    } catch (e) {
+      // 헤더 복구 실패해도 시트 사용은 가능하도록 무시
     }
   }
   return sh;
