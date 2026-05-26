@@ -91,6 +91,11 @@ ul li button { background: none; border: none; color: var(--warn); cursor: point
 .reason-row input { flex: 1; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; }
 .reason-row button { padding: 6px 12px; border: 1px solid var(--line); background: #fff; border-radius: 6px; cursor: pointer; }
 
+.swap-row { display: flex; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px dashed var(--line); flex-wrap: wrap; }
+.swap-row select, .swap-row button { padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; cursor: pointer; }
+.swap-row button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.swap-row > span { flex: 1; min-width: 0; }
+
 @media print {
   #topbar, .toolbar, .seg, #admSubmitStatus, #admNextUp, #admCalendar, #admCarryover { display: none !important; }
   body { background: #fff; }

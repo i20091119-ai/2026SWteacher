@@ -58,4 +58,9 @@ window.API = {
   deleteAssignment: (id) => api("deleteAssignment", { id }),
   setSeed: (ym, kind, pointer) => api("setSeed", { ym, kind, pointer }),
   setSetting: (key, value) => api("setSetting", { key, value }),
+  createSwap: (assignmentId, target, note) => api("createSwap", { assignmentId, target, note }),
+  acceptSwap: (swapId) => api("acceptSwap", { swapId }),
+  declineSwap: (swapId) => api("declineSwap", { swapId }),
+  cancelSwap: (swapId) => api("cancelSwap", { swapId }),
+  confirmSwap: (swapId) => api("confirmSwap", { swapId }),
 };

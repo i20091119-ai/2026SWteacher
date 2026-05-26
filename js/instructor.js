@@ -22,6 +22,7 @@ window.Instructor = {
     Instructor.renderUnavailList(data);
     Instructor.renderSubmitState(data);
     Instructor.renderSchedule(ym, data);
+    Instructor.renderSwaps(ym, data);
   },
   renderCalendar(ym, data) {
     const me = STATE.user.name;
@@ -145,5 +146,113 @@ window.Instructor = {
     if (a.form && a.role) return `${a.kind}·${a.form}·${a.role}`;
     if (a.form) return `${a.kind}·${a.form}`;
     return a.kind;
+  },
+
+  renderSwaps(ym, data) {
+    const me = STATE.user.name;
+    const inbox = document.getElementById("insSwapInbox");
+    const sent = document.getElementById("insSwapSent");
+    const newWrap = document.getElementById("insSwapNew");
+    inbox.innerHTML = ""; sent.innerHTML = ""; newWrap.innerHTML = "";
+    if (!data.published) {
+      newWrap.innerHTML = '<div class="muted">확정 근무표 발표 후 신청 가능합니다.</div>';
+      return;
+    }
+    const swaps = data.swaps || [];
+    const assignments = data.assignments || [];
+    const findAssignment = (id) => assignments.find((a) => a.id === id);
+    const labelA = (a) => a ? `${a.date} ${Instructor.labelOf(a)}` : "(배치 없음)";
+
+    // 받은 요청 (내가 target)
+    const myInbox = swaps.filter((s) => s.target === me && s.status === "pending_accept");
+    if (myInbox.length) {
+      inbox.innerHTML = "<h3 style='font-size:15px'>받은 요청</h3>";
+      myInbox.forEach((s) => {
+        const a = findAssignment(s.assignmentId);
+        const div = document.createElement("div");
+        div.className = "swap-row";
+        div.innerHTML = `<span><b>${s.requester}</b> → 나: ${labelA(a)}</span>`;
+        const ok = document.createElement("button");
+        ok.type = "button"; ok.textContent = "수락";
+        ok.onclick = async () => { await Instructor.swapAction(API.acceptSwap, s.id); };
+        const no = document.createElement("button");
+        no.type = "button"; no.textContent = "거절";
+        no.onclick = async () => { await Instructor.swapAction(API.declineSwap, s.id); };
+        div.appendChild(ok); div.appendChild(no);
+        inbox.appendChild(div);
+      });
+    }
+
+    // 보낸 요청 (내가 requester)
+    const mySent = swaps.filter((s) => s.requester === me &&
+      (s.status === "pending_accept" || s.status === "pending_confirm"));
+    if (mySent.length) {
+      sent.innerHTML = "<h3 style='font-size:15px;margin-top:12px'>보낸 요청</h3>";
+      mySent.forEach((s) => {
+        const a = findAssignment(s.assignmentId);
+        const div = document.createElement("div");
+        div.className = "swap-row";
+        const statusLabel = s.status === "pending_accept" ? "대상 수락 대기" : "최종 확정 대기";
+        div.innerHTML = `<span>${labelA(a)} → <b>${s.target}</b> (${statusLabel})</span>`;
+        if (s.status === "pending_confirm") {
+          const confirm = document.createElement("button");
+          confirm.type = "button"; confirm.textContent = "최종 확정";
+          confirm.className = "primary";
+          confirm.onclick = async () => { await Instructor.swapAction(API.confirmSwap, s.id); };
+          div.appendChild(confirm);
+        }
+        const cancel = document.createElement("button");
+        cancel.type = "button"; cancel.textContent = "취소";
+        cancel.onclick = async () => { await Instructor.swapAction(API.cancelSwap, s.id); };
+        div.appendChild(cancel);
+        sent.appendChild(div);
+      });
+    }
+
+    // 신청할 수 있는 내 수업
+    const myAssignments = assignments.filter((a) => a.name === me);
+    if (!myAssignments.length) {
+      newWrap.innerHTML = '<div class="muted">이 달에 본인 배치가 없습니다.</div>';
+      return;
+    }
+    const activeBy = new Set(swaps
+      .filter((s) => s.status === "pending_accept" || s.status === "pending_confirm")
+      .map((s) => s.assignmentId));
+    const others = STATE.instructors.filter((n) => n !== me);
+    myAssignments.sort((a, b) => a.date.localeCompare(b.date)).forEach((a) => {
+      const div = document.createElement("div");
+      div.className = "swap-row";
+      const left = document.createElement("span");
+      left.innerHTML = `${a.date} <b>${Instructor.labelOf(a)}</b>`;
+      div.appendChild(left);
+      if (activeBy.has(a.id)) {
+        const tag = document.createElement("span");
+        tag.className = "muted"; tag.textContent = " (진행 중)";
+        div.appendChild(tag);
+      } else {
+        const sel = document.createElement("select");
+        sel.innerHTML = '<option value="">대상 강사 선택</option>' +
+          others.map((n) => `<option>${n}</option>`).join("");
+        const btn = document.createElement("button");
+        btn.type = "button"; btn.textContent = "교체 신청";
+        btn.onclick = async () => {
+          const target = sel.value;
+          if (!target) { alert("대상 강사를 선택하세요"); return; }
+          try {
+            await API.createSwap(a.id, target);
+            await Instructor.loadMonth();
+          } catch (e) { alert("신청 실패: " + e.message); }
+        };
+        div.appendChild(sel); div.appendChild(btn);
+      }
+      newWrap.appendChild(div);
+    });
+  },
+
+  async swapAction(fn, swapId) {
+    try {
+      await fn(swapId);
+      await Instructor.loadMonth();
+    } catch (e) { alert("실패: " + e.message); }
   },
 };

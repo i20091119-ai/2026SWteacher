@@ -19,7 +19,25 @@ const TABS = {
   seed: "순번시드",
   settings: "설정",
   carryover: "이월",
+  swap: "교체요청",
 };
+
+const HEADERS = {
+  instructors: ["name", "order"],
+  unavail: ["name", "date", "reason"],
+  submit: ["ym", "name", "submitted", "submittedAt"],
+  schedule: ["id", "date", "kind", "form", "role", "name", "hExplain", "hSupport", "hResearch", "memo"],
+  seed: ["ym", "kind", "pointer", "lockedAt"],
+  settings: ["key", "value"],
+  carryover: ["srcYm", "name", "overflowExplainH", "compensationAmount", "recommendedH", "status", "note"],
+  swap: ["id", "ym", "assignmentId", "requester", "target", "status", "requestedAt", "respondedAt", "finalizedAt", "note"],
+};
+
+function isTrue(v) {
+  if (v === true) return true;
+  const s = String(v).trim().toLowerCase();
+  return s === "true" || s === "1" || s === "y" || s === "yes";
+}
 
 function doPost(e) {
   let body;
@@ -120,6 +138,26 @@ function dispatch(action, p, ctx) {
       if (ctx.role !== "admin") throw new Error("관리자 인증 필요");
       return withLock(() => setSetting(p.key, p.value));
     }
+    case "createSwap": {
+      if (ctx.role !== "instructor") throw new Error("강사 인증 필요");
+      return withLock(() => createSwap(ctx.name, p));
+    }
+    case "acceptSwap": {
+      if (ctx.role !== "instructor") throw new Error("강사 인증 필요");
+      return withLock(() => acceptSwap(ctx.name, p));
+    }
+    case "declineSwap": {
+      if (ctx.role !== "instructor") throw new Error("강사 인증 필요");
+      return withLock(() => declineSwap(ctx.name, p));
+    }
+    case "cancelSwap": {
+      if (ctx.role !== "instructor") throw new Error("강사 인증 필요");
+      return withLock(() => cancelSwap(ctx.name, p));
+    }
+    case "confirmSwap": {
+      if (ctx.role !== "instructor") throw new Error("강사 인증 필요");
+      return withLock(() => confirmSwap(ctx.name, p));
+    }
     default: throw new Error("알 수 없는 action: " + action);
   }
 }
@@ -136,9 +174,23 @@ function getSheet(name, headers) {
   let sh = ss.getSheetByName(name);
   if (!sh) {
     sh = ss.insertSheet(name);
-    if (headers) sh.appendRow(headers);
-  } else if (headers && sh.getLastRow() === 0) {
-    sh.appendRow(headers);
+    if (headers) sh.getRange(1, 1, 1, headers.length).setValues([headers]);
+    return sh;
+  }
+  if (headers) {
+    const last = sh.getLastRow();
+    if (last === 0) {
+      sh.getRange(1, 1, 1, headers.length).setValues([headers]);
+    } else {
+      // 1행이 정확한 헤더가 아니면 1행 위에 헤더를 삽입해 자동 복구
+      const cols = Math.max(sh.getLastColumn(), headers.length);
+      const firstRow = sh.getRange(1, 1, 1, cols).getValues()[0];
+      const matches = headers.every((h, i) => String(firstRow[i] || "") === h);
+      if (!matches) {
+        sh.insertRowBefore(1);
+        sh.getRange(1, 1, 1, headers.length).setValues([headers]);
+      }
+    }
   }
   return sh;
 }
@@ -163,18 +215,19 @@ function writeRow(sh, headers, obj) {
 
 /** ===== 데이터 ===== */
 function ensureTabs() {
-  getSheet(TABS.instructors, ["name", "order"]);
-  getSheet(TABS.unavail, ["name", "date", "reason"]);
-  getSheet(TABS.submit, ["ym", "name", "submitted", "submittedAt"]);
-  getSheet(TABS.schedule, ["id", "date", "kind", "form", "role", "name", "hExplain", "hSupport", "hResearch", "memo"]);
-  getSheet(TABS.seed, ["ym", "kind", "pointer", "lockedAt"]);
-  getSheet(TABS.settings, ["key", "value"]);
-  getSheet(TABS.carryover, ["srcYm", "name", "overflowExplainH", "compensationAmount", "recommendedH", "status", "note"]);
+  getSheet(TABS.instructors, HEADERS.instructors);
+  getSheet(TABS.unavail, HEADERS.unavail);
+  getSheet(TABS.submit, HEADERS.submit);
+  getSheet(TABS.schedule, HEADERS.schedule);
+  getSheet(TABS.seed, HEADERS.seed);
+  getSheet(TABS.settings, HEADERS.settings);
+  getSheet(TABS.carryover, HEADERS.carryover);
+  getSheet(TABS.swap, HEADERS.swap);
   seedDefaultsIfEmpty();
 }
 
 function seedDefaultsIfEmpty() {
-  const insSh = getSheet(TABS.instructors, ["name", "order"]);
+  const insSh = getSheet(TABS.instructors, HEADERS.instructors);
   const ins = readAll(insSh);
   if (!ins.length) {
     const rows = ["김경화", "신미정", "이경향", "이윤미"].map((n, i) => [n, i + 1]);
@@ -182,7 +235,7 @@ function seedDefaultsIfEmpty() {
   }
   // ★ readSettings() 직접 호출 금지 (ensureTabs → seedDefaultsIfEmpty → readSettings → ensureTabs 무한 재귀).
   //   설정 시트를 한 번만 직접 읽는다.
-  const settingsSh = getSheet(TABS.settings, ["key", "value"]);
+  const settingsSh = getSheet(TABS.settings, HEADERS.settings);
   const settings = {};
   readAll(settingsSh).forEach((r) => { settings[String(r.key)] = r.value; });
   const HOLIDAYS_2026 = [
@@ -203,7 +256,7 @@ function seedDefaultsIfEmpty() {
     settingsSh.getRange(settingsSh.getLastRow() + 1, 1, missing.length, 2).setValues(missing);
   }
   // 2026-06 시드: 가족체험 0 (보조=신미정), 주말어드벤처 2 (토오전=이경향)
-  const seedSh = getSheet(TABS.seed);
+  const seedSh = getSheet(TABS.seed, HEADERS.seed);
   const seed = readAll(seedSh);
   const has = (ym, kind) => seed.some((s) => String(s.ym) === ym && String(s.kind) === kind);
   const seedRows = [];
@@ -217,7 +270,7 @@ function seedDefaultsIfEmpty() {
 
 function readSettings() {
   // ensureTabs를 호출하지 않는다 — 호출자가 책임지거나, getSheet에 헤더 인자로 자체 보장.
-  const rows = readAll(getSheet(TABS.settings, ["key", "value"]));
+  const rows = readAll(getSheet(TABS.settings, HEADERS.settings));
   const obj = {};
   rows.forEach((r) => { obj[String(r.key)] = r.value; });
   return obj;
@@ -225,7 +278,7 @@ function readSettings() {
 
 function bootstrap() {
   ensureTabs();
-  const instructors = readAll(getSheet(TABS.instructors))
+  const instructors = readAll(getSheet(TABS.instructors, HEADERS.instructors))
     .map((r) => String(r.name))
     .filter(Boolean)
     .sort((a, b) => a.localeCompare(b, "ko"));
@@ -236,7 +289,7 @@ function getMonth(ym) {
   ensureTabs();
   if (!ym) throw new Error("ym 누락");
   const inMonth = (d) => String(d).slice(0, 7) === ym;
-  const assignments = readAll(getSheet(TABS.schedule))
+  const assignments = readAll(getSheet(TABS.schedule, HEADERS.schedule))
     .filter((r) => inMonth(toDateStr(r.date)))
     .map((r) => ({
       id: String(r.id),
@@ -250,26 +303,40 @@ function getMonth(ym) {
       hResearch: Number(r.hResearch || 0),
       memo: String(r.memo || ""),
     }));
-  const unavails = readAll(getSheet(TABS.unavail))
+  const unavails = readAll(getSheet(TABS.unavail, HEADERS.unavail))
     .filter((r) => inMonth(toDateStr(r.date)))
     .map((r) => ({ name: String(r.name), date: toDateStr(r.date), reason: String(r.reason || "") }));
-  const submits = readAll(getSheet(TABS.submit))
+  const submits = readAll(getSheet(TABS.submit, HEADERS.submit))
     .filter((r) => String(r.ym) === ym)
-    .map((r) => ({ ym: String(r.ym), name: String(r.name), submitted: !!r.submitted, submittedAt: String(r.submittedAt || "") }));
-  const seeds = readAll(getSheet(TABS.seed))
+    .map((r) => ({ ym: String(r.ym), name: String(r.name), submitted: isTrue(r.submitted), submittedAt: String(r.submittedAt || "") }));
+  const seeds = readAll(getSheet(TABS.seed, HEADERS.seed))
     .filter((r) => String(r.ym) === ym)
     .map((r) => ({ ym: String(r.ym), kind: String(r.kind), pointer: Number(r.pointer) }));
+  const swaps = readAll(getSheet(TABS.swap, HEADERS.swap))
+    .filter((r) => String(r.ym) === ym)
+    .map((r) => ({
+      id: String(r.id),
+      ym: String(r.ym),
+      assignmentId: String(r.assignmentId),
+      requester: String(r.requester),
+      target: String(r.target),
+      status: String(r.status),
+      requestedAt: String(r.requestedAt || ""),
+      respondedAt: String(r.respondedAt || ""),
+      finalizedAt: String(r.finalizedAt || ""),
+      note: String(r.note || ""),
+    }));
   const settings = readSettings();
   const holidays = Object.keys(settings)
     .filter((k) => k.indexOf("holiday.") === 0 && String(settings[k]))
     .map((k) => k.substring("holiday.".length))
     .filter((d) => d.slice(0, 7) === ym);
-  return { ym, assignments, unavails, submits, seeds, holidays, published: !!settings["publish." + ym] };
+  return { ym, assignments, unavails, submits, seeds, swaps, holidays, published: isTrue(settings["publish." + ym]) };
 }
 
 function getCarryover(ym) {
   ensureTabs();
-  return readAll(getSheet(TABS.carryover)).filter((r) => String(r.srcYm) === ym);
+  return readAll(getSheet(TABS.carryover, HEADERS.carryover)).filter((r) => String(r.srcYm) === ym);
 }
 
 function toDateStr(v) {
@@ -281,7 +348,7 @@ function toDateStr(v) {
 }
 
 function saveUnavailable(name, date, on, reason) {
-  const sh = getSheet(TABS.unavail);
+  const sh = getSheet(TABS.unavail, HEADERS.unavail);
   const rows = readAll(sh);
   const idx = rows.findIndex((r) => String(r.name) === name && toDateStr(r.date) === date);
   if (on) {
@@ -301,7 +368,7 @@ function submitUnavailable(name, ym, submitted) {
 }
 
 function setSubmit(name, ym, submitted, submittedAt) {
-  const sh = getSheet(TABS.submit);
+  const sh = getSheet(TABS.submit, HEADERS.submit);
   const rows = readAll(sh);
   const idx = rows.findIndex((r) => String(r.ym) === ym && String(r.name) === name);
   if (idx === -1) sh.appendRow([ym, name, submitted, submittedAt]);
@@ -309,8 +376,8 @@ function setSubmit(name, ym, submitted, submittedAt) {
 }
 
 function saveAssignment(a) {
-  const sh = getSheet(TABS.schedule);
-  const headers = ["id", "date", "kind", "form", "role", "name", "hExplain", "hSupport", "hResearch", "memo"];
+  const sh = getSheet(TABS.schedule, HEADERS.schedule);
+  const headers = HEADERS.schedule;
   const rows = readAll(sh);
   if (a.id) {
     const idx = rows.findIndex((r) => String(r.id) === String(a.id));
@@ -329,7 +396,7 @@ function saveAssignment(a) {
 }
 
 function deleteAssignment(id) {
-  const sh = getSheet(TABS.schedule);
+  const sh = getSheet(TABS.schedule, HEADERS.schedule);
   const rows = readAll(sh);
   const idx = rows.findIndex((r) => String(r.id) === String(id));
   if (idx === -1) throw new Error("배치를 찾을 수 없습니다");
@@ -338,7 +405,7 @@ function deleteAssignment(id) {
 }
 
 function setSeed(ym, kind, pointer) {
-  const sh = getSheet(TABS.seed);
+  const sh = getSheet(TABS.seed, HEADERS.seed);
   const rows = readAll(sh);
   const idx = rows.findIndex((r) => String(r.ym) === ym && String(r.kind) === kind);
   const now = new Date().toISOString();
@@ -348,10 +415,96 @@ function setSeed(ym, kind, pointer) {
 }
 
 function setSetting(key, value) {
-  const sh = getSheet(TABS.settings);
+  const sh = getSheet(TABS.settings, HEADERS.settings);
   const rows = readAll(sh);
   const idx = rows.findIndex((r) => String(r.key) === String(key));
   if (idx === -1) sh.appendRow([key, value]);
   else sh.getRange(rows[idx].__row, 1, 1, 2).setValues([[key, value]]);
+  return { ok: true };
+}
+
+/** ===== 수업 교체 (swap) =====
+ * 흐름: requester가 createSwap → target이 acceptSwap/declineSwap → requester가 confirmSwap/cancelSwap.
+ * confirmSwap 시점에 schedule 시트의 해당 배치의 name이 target으로 변경된다.
+ * status: pending_accept → pending_confirm → completed
+ *                    └─ declined / cancelled
+ */
+function createSwap(requester, p) {
+  if (!p || !p.assignmentId || !p.target) throw new Error("assignmentId/target 누락");
+  const schSh = getSheet(TABS.schedule, HEADERS.schedule);
+  const schRows = readAll(schSh);
+  const a = schRows.find((r) => String(r.id) === String(p.assignmentId));
+  if (!a) throw new Error("배치를 찾을 수 없습니다");
+  if (String(a.name) !== requester) throw new Error("본인 배치만 교체 신청할 수 있습니다");
+  if (String(a.name) === String(p.target)) throw new Error("자기 자신과는 교체할 수 없습니다");
+  const ym = toDateStr(a.date).slice(0, 7);
+  const settings = readSettings();
+  if (!isTrue(settings["publish." + ym])) throw new Error("확정 근무표 발표 후에 신청 가능");
+  // 같은 배치에 대해 진행 중인 요청이 있으면 막음
+  const swapSh = getSheet(TABS.swap, HEADERS.swap);
+  const swaps = readAll(swapSh);
+  const active = swaps.find((s) => String(s.assignmentId) === String(p.assignmentId)
+    && (String(s.status) === "pending_accept" || String(s.status) === "pending_confirm"));
+  if (active) throw new Error("이 배치는 이미 진행 중인 교체 요청이 있습니다");
+  const id = Utilities.getUuid();
+  const now = new Date().toISOString();
+  swapSh.appendRow([id, ym, String(p.assignmentId), requester, String(p.target),
+    "pending_accept", now, "", "", String(p.note || "")]);
+  return { id };
+}
+
+function _findSwap(swapId) {
+  const sh = getSheet(TABS.swap, HEADERS.swap);
+  const rows = readAll(sh);
+  const idx = rows.findIndex((r) => String(r.id) === String(swapId));
+  if (idx === -1) throw new Error("교체 요청을 찾을 수 없습니다");
+  return { sh, rows, idx, row: rows[idx] };
+}
+
+function _updateSwap(sh, row, patch) {
+  const headers = HEADERS.swap;
+  const merged = headers.map((h) => (patch[h] !== undefined ? patch[h] : (row[h] !== undefined ? row[h] : "")));
+  sh.getRange(row.__row, 1, 1, headers.length).setValues([merged]);
+}
+
+function acceptSwap(target, p) {
+  const { sh, row } = _findSwap(p.swapId);
+  if (String(row.target) !== target) throw new Error("대상 강사만 수락할 수 있습니다");
+  if (String(row.status) !== "pending_accept") throw new Error("현재 상태에서 수락할 수 없습니다");
+  _updateSwap(sh, row, { status: "pending_confirm", respondedAt: new Date().toISOString() });
+  return { ok: true };
+}
+
+function declineSwap(target, p) {
+  const { sh, row } = _findSwap(p.swapId);
+  if (String(row.target) !== target) throw new Error("대상 강사만 거절할 수 있습니다");
+  if (String(row.status) !== "pending_accept") throw new Error("현재 상태에서 거절할 수 없습니다");
+  _updateSwap(sh, row, { status: "declined", respondedAt: new Date().toISOString() });
+  return { ok: true };
+}
+
+function cancelSwap(requester, p) {
+  const { sh, row } = _findSwap(p.swapId);
+  if (String(row.requester) !== requester) throw new Error("신청자만 취소할 수 있습니다");
+  if (String(row.status) !== "pending_accept" && String(row.status) !== "pending_confirm") {
+    throw new Error("이미 종료된 요청입니다");
+  }
+  _updateSwap(sh, row, { status: "cancelled", finalizedAt: new Date().toISOString() });
+  return { ok: true };
+}
+
+function confirmSwap(requester, p) {
+  const { sh, row } = _findSwap(p.swapId);
+  if (String(row.requester) !== requester) throw new Error("신청자만 최종 확정할 수 있습니다");
+  if (String(row.status) !== "pending_confirm") throw new Error("대상 수락 이후에만 확정 가능");
+  // schedule 시트의 해당 배치 name을 target으로 변경
+  const schSh = getSheet(TABS.schedule, HEADERS.schedule);
+  const schRows = readAll(schSh);
+  const a = schRows.find((r) => String(r.id) === String(row.assignmentId));
+  if (!a) throw new Error("원본 배치가 사라졌습니다");
+  if (String(a.name) !== requester) throw new Error("원본 배치의 강사가 신청자와 다릅니다");
+  const nameColIdx = HEADERS.schedule.indexOf("name") + 1;
+  schSh.getRange(a.__row, nameColIdx, 1, 1).setValues([[String(row.target)]]);
+  _updateSwap(sh, row, { status: "completed", finalizedAt: new Date().toISOString() });
   return { ok: true };
 }
