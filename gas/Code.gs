@@ -260,6 +260,7 @@ function seedDefaultsIfEmpty() {
     ["rate.explain", 30000],
     ["rate.other", 20000],
     ["weeklyCap", 14],
+    ["weeklyCap.2026-06", 20],
     ["admin.whitelist", "i20091119@gmail.com"],
   ].concat(HOLIDAYS_2026.map((d) => ["holiday." + d, 1]));
   const missing = defaults.filter(([k]) => settings[k] === undefined);

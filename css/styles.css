@@ -589,6 +589,71 @@ caption { padding: 8px; font-size: 13px; font-weight: 600; }
 #insSwapSent h3 { color: var(--ink-2); margin: 16px 0 8px; }
 
 /* ========================================================================
+   이월(carryover)
+   ======================================================================== */
+.co-summary-bar {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  margin-bottom: 12px;
+}
+.co-matrix-wrap { overflow-x: auto; }
+.co-matrix { table-layout: fixed; min-width: 560px; }
+.co-matrix th, .co-matrix td { vertical-align: top; }
+.co-matrix tbody td { font-size: 13px; }
+.co-matrix .co-cell-empty { color: var(--muted-2); text-align: center; }
+.co-matrix tr.co-summary td {
+  background: var(--bg-2);
+  font-weight: 600;
+  border-top: 2px solid var(--border-strong);
+}
+.co-matrix tr.co-summary td:first-child { color: var(--ink-2); }
+.co-cut-item { padding: 2px 0; }
+
+.co-tag {
+  display: inline-block;
+  font-size: 11px; font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  margin-right: 4px;
+  white-space: nowrap;
+}
+.co-tag.research { background: #dcfce7; color: #166534; }
+.co-tag.support  { background: #fed7aa; color: #9a3412; }
+
+.co-status-complete { color: var(--success); }
+.co-status-partial  { color: var(--amber); }
+.co-status-missing  { color: var(--warn); }
+
+/* 강사 카드용 */
+.co-section { margin-bottom: 14px; }
+.co-section:last-child { margin-bottom: 0; }
+.co-section-title { font-size: 13px; font-weight: 600; color: var(--ink-2); margin-bottom: 8px; }
+.co-cut-list {
+  display: grid; gap: 6px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+}
+.co-cut-list li {
+  padding: 8px 12px;
+  background: var(--warn-soft);
+  border: 1px solid #fecaca;
+  border-radius: var(--r-md);
+  font-size: 13px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.co-cut-list .co-date { font-weight: 600; color: var(--ink-2); }
+.co-recommend { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 14px; }
+.co-status-line {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 14px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  font-size: 14px;
+}
+.co-status-line.co-status-complete { background: var(--success-soft); border-color: #bbf7d0; }
+.co-status-line.co-status-partial  { background: var(--amber-soft);   border-color: #fde68a; }
+.co-status-line.co-status-missing  { background: var(--warn-soft);    border-color: #fecaca; }
+
+/* ========================================================================
    유틸리티
    ======================================================================== */
 .muted-block {

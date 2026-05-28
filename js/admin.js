@@ -51,20 +51,84 @@ window.Admin = {
   async renderCarryover(ym) {
     const target = document.getElementById("admCarryover");
     const prev = prevYm(ym);
+    target.innerHTML = '<div class="muted">불러오는 중...</div>';
     try {
       const prevData = await API.getMonth(prev);
       const co = Carryover.computeFromMonth(prev, prevData.assignments || []);
-      const names = Object.keys(co);
+      const names = Object.keys(co).sort((a, b) => a.localeCompare(b, "ko"));
+      const cap = Ledger.capForYm(prev);
       if (!names.length) {
-        target.innerHTML = `<div class="muted">${prev} 기준 이월 대상이 없습니다.</div>`;
+        target.innerHTML = `<div class="muted">${prev} 기준 이월 대상이 없습니다. (주간 상한 ${cap}h)</div>`;
         return;
       }
-      target.innerHTML = `<table><thead><tr><th>강사</th><th>해설 초과(h)</th><th>보전 금액</th><th>이월 권장(h, ×1.5)</th></tr></thead><tbody>${
-        names.map((n) => {
-          const r = co[n];
-          return `<tr><td>${n}</td><td>${r.overflowExplainH}</td><td>${r.compensationAmount.toLocaleString()}</td><td>${r.recommendedH}</td></tr>`;
-        }).join("")
-      }</tbody></table>`;
+      const placed = Carryover.placedInMonth((Admin.data && Admin.data.assignments) || []);
+      const status = Carryover.matchStatus(co, placed);
+
+      const allWeeks = new Set();
+      names.forEach((n) => co[n].cutItems.forEach((it) => allWeeks.add(it.wkStart)));
+      const weeks = [...allWeeks].sort();
+
+      const missingCount = names.filter((n) => status[n].status === "missing").length;
+      const partialCount = names.filter((n) => status[n].status === "partial").length;
+      const completeCount = names.filter((n) => status[n].status === "complete").length;
+
+      let html = "";
+      html += `<div class="co-summary-bar">`;
+      html += `<span class="muted">${prev} → ${ym} · 주간 상한 ${cap}h</span>`;
+      if (missingCount) html += ` <span class="badge badge-warn">미반영 ${missingCount}명</span>`;
+      if (partialCount) html += ` <span class="badge badge-amber">일부 ${partialCount}명</span>`;
+      if (completeCount) html += ` <span class="badge badge-green">완료 ${completeCount}명</span>`;
+      html += `</div>`;
+
+      html += `<div class="co-matrix-wrap"><table class="co-matrix"><thead><tr><th>주차</th>`;
+      names.forEach((n) => { html += `<th>${n}</th>`; });
+      html += `</tr></thead><tbody>`;
+
+      weeks.forEach((wk, idx) => {
+        html += `<tr><td><b>${idx + 1}주차</b><br><span class="muted">${wk.slice(5)}~</span></td>`;
+        names.forEach((n) => {
+          const items = co[n].cutItems.filter((it) => it.wkStart === wk);
+          if (!items.length) {
+            html += `<td class="co-cell-empty">—</td>`;
+          } else {
+            const inner = items.map((it) => {
+              const tags = [];
+              if (it.cutHResearch > 0) tags.push(`<span class="co-tag research">연 ${it.cutHResearch}h</span>`);
+              if (it.cutHSupport > 0) tags.push(`<span class="co-tag support">지 ${it.cutHSupport}h</span>`);
+              return `<div class="co-cut-item">${it.date.slice(5)} ${tags.join("")}</div>`;
+            }).join("");
+            html += `<td>${inner}</td>`;
+          }
+        });
+        html += `</tr>`;
+      });
+
+      html += `<tr class="co-summary"><td>보전 권장</td>`;
+      names.forEach((n) => {
+        const r = co[n];
+        const parts = [];
+        if (r.recommendedResearchH > 0) parts.push(`<span class="co-tag research">연 ${r.recommendedResearchH}h</span>`);
+        if (r.recommendedSupportH > 0) parts.push(`<span class="co-tag support">지 ${r.recommendedSupportH}h</span>`);
+        html += `<td>${parts.join(" ") || "—"}</td>`;
+      });
+      html += `</tr>`;
+
+      html += `<tr class="co-summary"><td>${ym} 편성</td>`;
+      names.forEach((n) => {
+        const s = status[n];
+        const klass = "co-status-" + s.status;
+        const icon = s.status === "complete" ? "✓ 완료" : s.status === "partial" ? "⚠ 일부" : "✗ 미반영";
+        const detail = `연 ${s.placedResearch}h · 지 ${s.placedSupport}h`;
+        const remaining = (s.remResearch > 0 || s.remSupport > 0)
+          ? `<div class="muted">남음: ${s.remResearch > 0 ? `연 ${s.remResearch}h ` : ""}${s.remSupport > 0 ? `지 ${s.remSupport}h` : ""}</div>`
+          : "";
+        html += `<td class="${klass}"><div>${detail}</div><div><b>${icon}</b></div>${remaining}</td>`;
+      });
+      html += `</tr>`;
+
+      html += `</tbody></table></div>`;
+      html += `<p class="muted" style="margin-top:8px">관리자가 ${ym} 캘린더에 <b>연구이월</b>/<b>지원이월</b> kind로 항목을 추가하면 "편성" 행이 자동으로 갱신됩니다.</p>`;
+      target.innerHTML = html;
     } catch (e) {
       target.innerHTML = `<div class="muted">전월(${prev}) 데이터 로드 실패: ${e.message}</div>`;
     }
@@ -183,7 +247,7 @@ window.Admin = {
     names.forEach((n) => {
       const rows = useLedger ? view[n].weeks : view[n];
       html += `<h3>${n}</h3>`;
-      html += `<table><thead><tr><th>주 시작(일)</th><th>해설</th><th>지원</th><th>연구</th><th>합계</th>${useLedger ? "<th>잘린 해설</th>" : "<th>초과</th>"}</tr></thead><tbody>`;
+      html += `<table><thead><tr><th>주 시작(일)</th><th>해설</th><th>지원</th><th>연구</th><th>합계</th>${useLedger ? "<th>잘린 시수</th>" : "<th>초과</th>"}</tr></thead><tbody>`;
       rows.forEach((w) => {
         const tag = useLedger
           ? (w.cutExplain > 0 ? "warn" : "")

@@ -23,6 +23,7 @@ window.Instructor = {
     Instructor.renderSubmitState(data);
     Instructor.renderSchedule(ym, data);
     Instructor.renderSwaps(ym, data);
+    Instructor.renderMyCarryover(ym, data);
   },
   renderCalendar(ym, data) {
     const me = STATE.user.name;
@@ -254,5 +255,71 @@ window.Instructor = {
       await fn(swapId);
       await Instructor.loadMonth();
     } catch (e) { alert("실패: " + e.message); }
+  },
+
+  async renderMyCarryover(ym, data) {
+    const wrap = document.getElementById("insMyCarryover");
+    if (!wrap) return;
+    const me = STATE.user.name;
+    const prev = prevYm(ym);
+    wrap.innerHTML = '<div class="muted">불러오는 중...</div>';
+    try {
+      const prevData = await API.getMonth(prev);
+      const co = Carryover.computeFromMonth(prev, prevData.assignments || []);
+      const myRec = co[me];
+      const cap = Ledger.capForYm(prev);
+      if (!myRec) {
+        wrap.innerHTML = `<div class="muted">${prev}에 서류상 빠진 근무가 없습니다. (주간 상한 ${cap}h)</div>`;
+        return;
+      }
+      const placed = Carryover.placedInMonth(data.assignments || []);
+      const status = Carryover.matchStatus({ [me]: myRec }, placed)[me];
+
+      const cutHtml = myRec.cutItems
+        .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+        .map((it) => {
+          const tags = [];
+          if (it.cutHResearch > 0) tags.push(`<span class="co-tag research">연구 ${it.cutHResearch}h</span>`);
+          if (it.cutHSupport > 0) tags.push(`<span class="co-tag support">지원 ${it.cutHSupport}h</span>`);
+          return `<li><span class="co-date">${it.date}</span> ${tags.join(" ")}</li>`;
+        }).join("");
+
+      const statusKlass = "co-status-" + status.status;
+      const statusText = status.status === "complete" ? "✓ 보전 완료"
+        : status.status === "partial" ? "⚠ 일부 반영"
+        : "✗ 미반영";
+
+      const remParts = [];
+      if (status.remResearch > 0) remParts.push(`연구 ${status.remResearch}h`);
+      if (status.remSupport > 0) remParts.push(`지원 ${status.remSupport}h`);
+      const remainingLine = remParts.length
+        ? `<div class="muted" style="margin-top:4px">남은 보전: ${remParts.join(" · ")}</div>`
+        : "";
+
+      wrap.innerHTML = `
+        <div class="co-section">
+          <div class="co-section-title">⚠ ${prev}에서 서류상 빠진 실제 근무 <span class="muted">(주간 상한 ${cap}h 초과분)</span></div>
+          <ul class="co-cut-list">${cutHtml}</ul>
+        </div>
+        <div class="co-section">
+          <div class="co-section-title">📌 ${ym} 보전 권장 시수</div>
+          <div class="co-recommend">
+            ${myRec.recommendedResearchH > 0 ? `<span class="co-tag research">연구 ${myRec.recommendedResearchH}h</span>` : ""}
+            ${myRec.recommendedSupportH > 0 ? `<span class="co-tag support">지원 ${myRec.recommendedSupportH}h</span>` : ""}
+            <span class="muted">합계 ${myRec.recommendedH}h</span>
+          </div>
+        </div>
+        <div class="co-section">
+          <div class="co-section-title">📅 ${ym} 편성 현황</div>
+          <div class="co-status-line ${statusKlass}">
+            <span>연구이월 ${status.placedResearch}h · 지원이월 ${status.placedSupport}h</span>
+            <b>${statusText}</b>
+          </div>
+          ${remainingLine}
+        </div>
+      `;
+    } catch (e) {
+      wrap.innerHTML = `<div class="muted">전월(${prev}) 데이터 로드 실패: ${e.message}</div>`;
+    }
   },
 };
