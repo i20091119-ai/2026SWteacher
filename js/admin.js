@@ -327,9 +327,14 @@ window.Admin = {
         <label>지원시수 <input type="number" step="0.5" id="m_hS" value="${a.hSupport || 0}"/></label>
         <label>연구시수 <input type="number" step="0.5" id="m_hR" value="${a.hResearch || 0}"/></label>
       </div>
+      <p class="muted" style="margin-top:8px">형태 선택 시 표준 시수가 자동으로 채워집니다(연구·지원 유형은 직접 입력).</p>
       <label>메모 <input type="text" id="m_memo" value="${a.memo || ""}" style="width:100%"/></label>
       ${a.id ? '<p><button type="button" id="m_del" style="color:#c53030">삭제</button></p>' : ""}
     `;
+    // form/kind 변경 시 표준 시수 자동 적용
+    const apply = () => Admin.applyDefaultHours();
+    document.getElementById("m_kind").onchange = apply;
+    document.getElementById("m_form").onchange = apply;
     m.classList.remove("hidden");
     document.getElementById("modalCancel").onclick = () => m.classList.add("hidden");
     document.getElementById("modalSave").onclick = async () => {
@@ -360,5 +365,23 @@ window.Admin = {
         await Admin.loadMonth();
       };
     }
+  },
+
+  // 형태별 표준 시수 자동 채움 (해설 kind에만 적용)
+  applyDefaultHours() {
+    const kind = document.getElementById("m_kind").value;
+    const form = document.getElementById("m_form").value;
+    if (kind !== "해설") return;
+    let hE = null, hS = null, hR = null;
+    if (form === "가족체험" || form === "학교체험") {
+      hE = 3; hS = 0; hR = 0;
+    } else if (form === "주말어드벤처") {
+      hE = 3; hS = 0.5; hR = 0;
+    } else {
+      return;
+    }
+    document.getElementById("m_hE").value = hE;
+    document.getElementById("m_hS").value = hS;
+    document.getElementById("m_hR").value = hR;
   },
 };
