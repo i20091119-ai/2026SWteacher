@@ -504,3 +504,33 @@ function cancelSwap(requester, p) {
   _updateSwap(sh, row, { status: "cancelled", finalizedAt: new Date().toISOString() });
   return { ok: true };
 }
+
+/**
+ * 일회성 시드: 2026-05 → 2026-06 이월 데이터.
+ * 6월 1일에 김경화/이경향/이윤미 각각 "연구이월" 3시간 추가.
+ * 이미 동일한(name + date + kind) row가 있으면 건너뜀(중복 방지).
+ * GAS Editor에서 직접 이 함수를 실행한 뒤 결과 로그를 확인.
+ */
+function seedMayToJuneCarryover() {
+  const sh = getSheet(TABS.schedule, HEADERS.schedule);
+  const rows = readAll(sh);
+  const date = "2026-06-01";
+  const kind = "연구이월";
+  const memo = "5/11 이월분";
+  const targets = ["김경화", "이경향", "이윤미"];
+  const added = [];
+  const skipped = [];
+  targets.forEach((name) => {
+    const exists = rows.some((r) =>
+      String(r.name) === name &&
+      toDateStr(r.date) === date &&
+      String(r.kind) === kind
+    );
+    if (exists) { skipped.push(name); return; }
+    const id = Utilities.getUuid();
+    sh.appendRow([id, date, kind, "", "", name, 0, 0, 3, memo]);
+    added.push(name);
+  });
+  Logger.log("added=" + JSON.stringify(added) + " skipped=" + JSON.stringify(skipped));
+  return { added, skipped };
+}
