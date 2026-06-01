@@ -147,21 +147,17 @@ function dispatch(action, p, ctx) {
       if (ctx.role !== "instructor") throw new Error("강사 인증 필요");
       return withLock(() => createSwap(ctx.name, p));
     }
-    case "acceptSwap": {
-      if (ctx.role !== "instructor") throw new Error("강사 인증 필요");
-      return withLock(() => acceptSwap(ctx.name, p));
-    }
-    case "declineSwap": {
-      if (ctx.role !== "instructor") throw new Error("강사 인증 필요");
-      return withLock(() => declineSwap(ctx.name, p));
-    }
     case "cancelSwap": {
       if (ctx.role !== "instructor") throw new Error("강사 인증 필요");
       return withLock(() => cancelSwap(ctx.name, p));
     }
-    case "confirmSwap": {
-      if (ctx.role !== "instructor") throw new Error("강사 인증 필요");
-      return withLock(() => confirmSwap(ctx.name, p));
+    case "approveSwap": {
+      if (ctx.role !== "admin") throw new Error("관리자 인증 필요");
+      return withLock(() => approveSwap(ctx.email, p));
+    }
+    case "rejectSwap": {
+      if (ctx.role !== "admin") throw new Error("관리자 인증 필요");
+      return withLock(() => rejectSwap(ctx.email, p));
     }
     default: throw new Error("알 수 없는 action: " + action);
   }
@@ -353,10 +349,10 @@ function getCarryover(ym) {
 
 function toDateStr(v) {
   if (v instanceof Date) {
-    const y = v.getFullYear(), m = v.getMonth() + 1, d = v.getDate();
-    return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    // script timezone 기준으로 고정 (시트 timezone 차이로 인한 하루 밀림 방지)
+    return Utilities.formatDate(v, Session.getScriptTimeZone() || "Asia/Seoul", "yyyy-MM-dd");
   }
-  return String(v || "");
+  return String(v == null ? "" : v);
 }
 
 function saveUnavailable(name, date, on, reason) {
@@ -436,10 +432,9 @@ function setSetting(key, value) {
 }
 
 /** ===== 수업 교체 (swap) =====
- * 흐름: requester가 createSwap → target이 acceptSwap/declineSwap → requester가 confirmSwap/cancelSwap.
- * confirmSwap 시점에 schedule 시트의 해당 배치의 name이 target으로 변경된다.
- * status: pending_accept → pending_confirm → completed
- *                    └─ declined / cancelled
+ * 흐름: requester가 createSwap → 관리자가 approveSwap/rejectSwap (또는 requester가 cancelSwap).
+ * approveSwap 시점에 schedule 시트의 해당 배치의 name이 target으로 변경된다.
+ * status: pending_admin → completed / rejected / cancelled
  */
 function createSwap(requester, p) {
   if (!p || !p.assignmentId || !p.target) throw new Error("assignmentId/target 누락");
@@ -456,12 +451,12 @@ function createSwap(requester, p) {
   const swapSh = getSheet(TABS.swap, HEADERS.swap);
   const swaps = readAll(swapSh);
   const active = swaps.find((s) => String(s.assignmentId) === String(p.assignmentId)
-    && (String(s.status) === "pending_accept" || String(s.status) === "pending_confirm"));
-  if (active) throw new Error("이 배치는 이미 진행 중인 교체 요청이 있습니다");
+    && String(s.status) === "pending_admin");
+  if (active) throw new Error("이 배치는 이미 관리자 승인 대기 중입니다");
   const id = Utilities.getUuid();
   const now = new Date().toISOString();
   swapSh.appendRow([id, ym, String(p.assignmentId), requester, String(p.target),
-    "pending_accept", now, "", "", String(p.note || "")]);
+    "pending_admin", now, "", "", String(p.note || "")]);
   return { id };
 }
 
@@ -479,44 +474,33 @@ function _updateSwap(sh, row, patch) {
   sh.getRange(row.__row, 1, 1, headers.length).setValues([merged]);
 }
 
-function acceptSwap(target, p) {
+function approveSwap(adminEmail, p) {
   const { sh, row } = _findSwap(p.swapId);
-  if (String(row.target) !== target) throw new Error("대상 강사만 수락할 수 있습니다");
-  if (String(row.status) !== "pending_accept") throw new Error("현재 상태에서 수락할 수 없습니다");
-  _updateSwap(sh, row, { status: "pending_confirm", respondedAt: new Date().toISOString() });
+  if (String(row.status) !== "pending_admin") throw new Error("현재 상태에서 승인할 수 없습니다");
+  const schSh = getSheet(TABS.schedule, HEADERS.schedule);
+  const schRows = readAll(schSh);
+  const a = schRows.find((r) => String(r.id) === String(row.assignmentId));
+  if (!a) throw new Error("원본 배치가 사라졌습니다");
+  if (String(a.name) !== String(row.requester)) throw new Error("원본 배치의 강사가 신청자와 다릅니다");
+  const nameColIdx = HEADERS.schedule.indexOf("name") + 1;
+  schSh.getRange(a.__row, nameColIdx, 1, 1).setValues([[String(row.target)]]);
+  const now = new Date().toISOString();
+  _updateSwap(sh, row, { status: "completed", respondedAt: now, finalizedAt: now });
   return { ok: true };
 }
 
-function declineSwap(target, p) {
+function rejectSwap(adminEmail, p) {
   const { sh, row } = _findSwap(p.swapId);
-  if (String(row.target) !== target) throw new Error("대상 강사만 거절할 수 있습니다");
-  if (String(row.status) !== "pending_accept") throw new Error("현재 상태에서 거절할 수 없습니다");
-  _updateSwap(sh, row, { status: "declined", respondedAt: new Date().toISOString() });
+  if (String(row.status) !== "pending_admin") throw new Error("현재 상태에서 거절할 수 없습니다");
+  const now = new Date().toISOString();
+  _updateSwap(sh, row, { status: "rejected", respondedAt: now, finalizedAt: now });
   return { ok: true };
 }
 
 function cancelSwap(requester, p) {
   const { sh, row } = _findSwap(p.swapId);
   if (String(row.requester) !== requester) throw new Error("신청자만 취소할 수 있습니다");
-  if (String(row.status) !== "pending_accept" && String(row.status) !== "pending_confirm") {
-    throw new Error("이미 종료된 요청입니다");
-  }
+  if (String(row.status) !== "pending_admin") throw new Error("이미 종료된 요청입니다");
   _updateSwap(sh, row, { status: "cancelled", finalizedAt: new Date().toISOString() });
-  return { ok: true };
-}
-
-function confirmSwap(requester, p) {
-  const { sh, row } = _findSwap(p.swapId);
-  if (String(row.requester) !== requester) throw new Error("신청자만 최종 확정할 수 있습니다");
-  if (String(row.status) !== "pending_confirm") throw new Error("대상 수락 이후에만 확정 가능");
-  // schedule 시트의 해당 배치 name을 target으로 변경
-  const schSh = getSheet(TABS.schedule, HEADERS.schedule);
-  const schRows = readAll(schSh);
-  const a = schRows.find((r) => String(r.id) === String(row.assignmentId));
-  if (!a) throw new Error("원본 배치가 사라졌습니다");
-  if (String(a.name) !== requester) throw new Error("원본 배치의 강사가 신청자와 다릅니다");
-  const nameColIdx = HEADERS.schedule.indexOf("name") + 1;
-  schSh.getRange(a.__row, nameColIdx, 1, 1).setValues([[String(row.target)]]);
-  _updateSwap(sh, row, { status: "completed", finalizedAt: new Date().toISOString() });
   return { ok: true };
 }

@@ -574,19 +574,11 @@ caption { padding: 8px; font-size: 13px; font-weight: 600; }
 .swap-row select { min-width: 140px; }
 .swap-row button { padding: 6px 12px; font-size: 13px; }
 
-#insSwapInbox:not(:empty) {
-  background: linear-gradient(180deg, var(--accent-soft), transparent);
-  border: 1px solid #bfdbfe;
-  border-radius: var(--r-md);
-  padding: 12px 14px;
-  margin-bottom: 12px;
-}
-#insSwapInbox h3 { color: var(--accent); margin-bottom: 8px; }
-#insSwapInbox .swap-row {
-  background: var(--surface);
-  border-color: #bfdbfe;
-}
-#insSwapSent h3 { color: var(--ink-2); margin: 16px 0 8px; }
+.swap-row.swap-status-pending_admin { background: var(--amber-soft); border-color: #fde68a; }
+.swap-row.swap-status-completed     { background: var(--success-soft); border-color: #bbf7d0; }
+.swap-row.swap-status-rejected,
+.swap-row.swap-status-cancelled     { background: var(--bg-2); opacity: 0.85; }
+.swap-row.swap-status-rejected b    { color: var(--warn); }
 
 /* ========================================================================
    이월(carryover)

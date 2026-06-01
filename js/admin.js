@@ -31,6 +31,7 @@ window.Admin = {
       STATE.instructors.map((n) => `<option>${n}</option>`).join("");
     Admin.renderSubmit(data);
     await Admin.renderCarryover(ym);
+    Admin.renderSwaps(ym, data);
     Admin.renderNextUp(ym, data);
     Admin.renderViews();
   },
@@ -365,6 +366,78 @@ window.Admin = {
         await Admin.loadMonth();
       };
     }
+  },
+
+  renderSwaps(ym, data) {
+    const wrap = document.getElementById("admSwaps");
+    if (!wrap) return;
+    const swaps = data.swaps || [];
+    const assignments = data.assignments || [];
+    const findA = (id) => assignments.find((a) => a.id === id);
+    const labelA = (a) => a ? `${a.date} ${Admin.labelOf(a)}` : "(배치 없음)";
+
+    const pending = swaps.filter((s) => s.status === "pending_admin")
+      .sort((a, b) => String(a.requestedAt).localeCompare(String(b.requestedAt)));
+    const recent = swaps.filter((s) => s.status !== "pending_admin")
+      .sort((a, b) => String(b.finalizedAt || b.requestedAt).localeCompare(String(a.finalizedAt || a.requestedAt)))
+      .slice(0, 10);
+
+    let html = "";
+    if (!pending.length && !recent.length) {
+      html = '<div class="muted">이번 달 신청된 일정 변경 요청이 없습니다.</div>';
+    } else {
+      if (pending.length) {
+        html += `<h3 class="subsection">승인 대기 <span class="badge badge-amber">${pending.length}건</span></h3>`;
+        html += '<div id="admSwapsPendingList"></div>';
+      }
+      if (recent.length) {
+        html += `<h3 class="subsection">최근 처리 내역</h3>`;
+        html += '<div id="admSwapsRecentList"></div>';
+      }
+    }
+    wrap.innerHTML = html;
+
+    const pendingList = document.getElementById("admSwapsPendingList");
+    if (pendingList) {
+      pending.forEach((s) => {
+        const a = findA(s.assignmentId);
+        const div = document.createElement("div");
+        div.className = "swap-row swap-status-pending_admin";
+        const span = document.createElement("span");
+        span.innerHTML = `<b>${s.requester}</b> → <b>${s.target}</b> · ${labelA(a)} <span class="muted">(${(s.requestedAt || "").slice(0, 10)})</span>`;
+        div.appendChild(span);
+        const ok = document.createElement("button");
+        ok.type = "button"; ok.textContent = "승인"; ok.className = "primary";
+        ok.onclick = async () => { await Admin.swapAction(API.approveSwap, s.id, "승인"); };
+        const no = document.createElement("button");
+        no.type = "button"; no.textContent = "거절";
+        no.onclick = async () => {
+          if (!confirm(`${s.requester} → ${s.target} 요청을 거절하시겠습니까?`)) return;
+          await Admin.swapAction(API.rejectSwap, s.id, "거절");
+        };
+        div.appendChild(ok);
+        div.appendChild(no);
+        pendingList.appendChild(div);
+      });
+    }
+    const recentList = document.getElementById("admSwapsRecentList");
+    if (recentList) {
+      recent.forEach((s) => {
+        const a = findA(s.assignmentId);
+        const div = document.createElement("div");
+        div.className = "swap-row swap-status-" + s.status;
+        const tag = ({ completed: "✓ 승인", rejected: "✗ 거절", cancelled: "· 취소" })[s.status] || s.status;
+        div.innerHTML = `<span><b>${s.requester}</b> → <b>${s.target}</b> · ${labelA(a)} <span class="muted">· ${tag} · ${(s.finalizedAt || s.requestedAt || "").slice(0, 10)}</span></span>`;
+        recentList.appendChild(div);
+      });
+    }
+  },
+
+  async swapAction(fn, swapId, label) {
+    try {
+      await fn(swapId);
+      await Admin.loadMonth();
+    } catch (e) { alert(label + " 실패: " + e.message); }
   },
 
   // 형태별 표준 시수 자동 채움 (해설 kind에만 적용)

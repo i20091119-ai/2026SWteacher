@@ -151,10 +151,11 @@ window.Instructor = {
 
   renderSwaps(ym, data) {
     const me = STATE.user.name;
-    const inbox = document.getElementById("insSwapInbox");
     const sent = document.getElementById("insSwapSent");
     const newWrap = document.getElementById("insSwapNew");
-    inbox.innerHTML = ""; sent.innerHTML = ""; newWrap.innerHTML = "";
+    const inbox = document.getElementById("insSwapInbox");
+    if (inbox) inbox.innerHTML = "";
+    sent.innerHTML = ""; newWrap.innerHTML = "";
     if (!data.published) {
       newWrap.innerHTML = '<div class="muted">확정 근무표 발표 후 신청 가능합니다.</div>';
       return;
@@ -164,48 +165,31 @@ window.Instructor = {
     const findAssignment = (id) => assignments.find((a) => a.id === id);
     const labelA = (a) => a ? `${a.date} ${Instructor.labelOf(a)}` : "(배치 없음)";
 
-    // 받은 요청 (내가 target)
-    const myInbox = swaps.filter((s) => s.target === me && s.status === "pending_accept");
-    if (myInbox.length) {
-      inbox.innerHTML = "<h3 style='font-size:15px'>받은 요청</h3>";
-      myInbox.forEach((s) => {
-        const a = findAssignment(s.assignmentId);
-        const div = document.createElement("div");
-        div.className = "swap-row";
-        div.innerHTML = `<span><b>${s.requester}</b> → 나: ${labelA(a)}</span>`;
-        const ok = document.createElement("button");
-        ok.type = "button"; ok.textContent = "수락";
-        ok.onclick = async () => { await Instructor.swapAction(API.acceptSwap, s.id); };
-        const no = document.createElement("button");
-        no.type = "button"; no.textContent = "거절";
-        no.onclick = async () => { await Instructor.swapAction(API.declineSwap, s.id); };
-        div.appendChild(ok); div.appendChild(no);
-        inbox.appendChild(div);
-      });
-    }
-
-    // 보낸 요청 (내가 requester)
-    const mySent = swaps.filter((s) => s.requester === me &&
-      (s.status === "pending_accept" || s.status === "pending_confirm"));
+    // 내가 보낸 요청
+    const mySent = swaps
+      .filter((s) => s.requester === me)
+      .sort((a, b) => String(b.requestedAt).localeCompare(String(a.requestedAt)));
     if (mySent.length) {
-      sent.innerHTML = "<h3 style='font-size:15px;margin-top:12px'>보낸 요청</h3>";
+      sent.innerHTML = "<h3 class='subsection'>내가 보낸 요청</h3>";
       mySent.forEach((s) => {
         const a = findAssignment(s.assignmentId);
         const div = document.createElement("div");
-        div.className = "swap-row";
-        const statusLabel = s.status === "pending_accept" ? "대상 수락 대기" : "최종 확정 대기";
-        div.innerHTML = `<span>${labelA(a)} → <b>${s.target}</b> (${statusLabel})</span>`;
-        if (s.status === "pending_confirm") {
-          const confirm = document.createElement("button");
-          confirm.type = "button"; confirm.textContent = "최종 확정";
-          confirm.className = "primary";
-          confirm.onclick = async () => { await Instructor.swapAction(API.confirmSwap, s.id); };
-          div.appendChild(confirm);
+        div.className = "swap-row swap-status-" + s.status;
+        const statusLabel = ({
+          pending_admin: "⏳ 관리자 승인 대기",
+          completed: "✓ 승인 완료",
+          rejected: "✗ 관리자 거절",
+          cancelled: "취소됨",
+        })[s.status] || s.status;
+        const span = document.createElement("span");
+        span.innerHTML = `${labelA(a)} → <b>${s.target}</b> <span class="muted">· ${statusLabel}</span>`;
+        div.appendChild(span);
+        if (s.status === "pending_admin") {
+          const cancel = document.createElement("button");
+          cancel.type = "button"; cancel.textContent = "취소";
+          cancel.onclick = async () => { await Instructor.swapAction(API.cancelSwap, s.id); };
+          div.appendChild(cancel);
         }
-        const cancel = document.createElement("button");
-        cancel.type = "button"; cancel.textContent = "취소";
-        cancel.onclick = async () => { await Instructor.swapAction(API.cancelSwap, s.id); };
-        div.appendChild(cancel);
         sent.appendChild(div);
       });
     }
