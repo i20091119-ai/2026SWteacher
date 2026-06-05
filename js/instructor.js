@@ -41,9 +41,14 @@ window.Instructor = {
         // 학생 프로그램 (강사·관리자 공통)
         programs.filter((p) => ds >= p.dateStart && ds <= p.dateEnd).forEach((p) => {
           const div = document.createElement("div");
-          div.className = "program program-" + (p.session === "오후" ? "pm" : "am");
-          div.textContent = `${p.session} ${p.school} ${p.students}명`;
-          div.title = `${p.dateStart}~${p.dateEnd} ${p.session} ${p.school} ${p.students}명${p.note ? " · " + p.note : ""}`;
+          const cls = p.session === "오후" ? "pm" : p.session === "오전" ? "am" : "none";
+          div.className = "program program-" + cls;
+          const parts = [];
+          if (p.session) parts.push(p.session);
+          parts.push(p.school);
+          if (p.students > 0) parts.push(p.students + "명");
+          div.textContent = parts.join(" ");
+          div.title = `${p.dateStart}${p.dateStart !== p.dateEnd ? "~" + p.dateEnd : ""} ${parts.join(" ")}${p.note ? " · " + p.note : ""}`;
           cell.appendChild(div);
         });
         // 확정된 본인 배치 표시

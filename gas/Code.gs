@@ -621,6 +621,78 @@ function seedPrograms2026() {
 }
 
 /**
+ * 일회성 시드: 추가 학생 프로그램 (학교체험 + 어드벤처관 + 가족SW체험교실).
+ * 동일한 (dateStart, dateEnd, session, school)이 이미 있으면 건너뜀.
+ */
+function seedPrograms2026Extra() {
+  const sh = getSheet(TABS.program, HEADERS.program);
+  const rows = readAll(sh);
+  const data = [];
+
+  // 학교체험 추가 (10~12월)
+  data.push(
+    { dateStart: "2026-10-01", dateEnd: "2026-10-01", session: "오전", school: "감천초",   students: 17 },
+    { dateStart: "2026-10-23", dateEnd: "2026-10-23", session: "오전", school: "한들초",   students: 26 },
+    { dateStart: "2026-11-04", dateEnd: "2026-11-05", session: "오전", school: "상북초",   students: 19 },
+    { dateStart: "2026-11-10", dateEnd: "2026-11-13", session: "오전", school: "평산초",   students: 21 },
+    { dateStart: "2026-12-01", dateEnd: "2026-12-04", session: "오전", school: "창원여중", students: 30 },
+    { dateStart: "2026-12-08", dateEnd: "2026-12-10", session: "오전", school: "창원여중", students: 30 }
+  );
+
+  // 어드벤처관(일요일 오전)
+  ["2026-06-07","2026-06-14","2026-06-21","2026-06-28",
+   "2026-07-05","2026-07-12","2026-07-19","2026-07-26",
+   "2026-08-02","2026-08-09","2026-08-16","2026-08-23","2026-08-30",
+   "2026-09-06","2026-09-13","2026-09-20","2026-09-27",
+   "2026-10-04","2026-10-11","2026-10-18","2026-10-25",
+   "2026-11-01","2026-11-08","2026-11-15","2026-11-22","2026-11-29",
+   "2026-12-06","2026-12-13","2026-12-20","2026-12-27"
+  ].forEach((d) => {
+    data.push({ dateStart: d, dateEnd: d, session: "오전", school: "어드벤처관", students: 0 });
+  });
+
+  // 어드벤처관(토요일 오전+오후)
+  ["2026-06-13","2026-06-20","2026-06-27",
+   "2026-07-04","2026-07-11","2026-07-18","2026-07-25",
+   "2026-08-01","2026-08-08","2026-08-22","2026-08-29",
+   "2026-09-05","2026-09-12","2026-09-19",
+   "2026-10-10","2026-10-17","2026-10-24","2026-10-31",
+   "2026-11-07","2026-11-14","2026-11-21","2026-11-28",
+   "2026-12-05","2026-12-12","2026-12-19","2026-12-26"
+  ].forEach((d) => {
+    data.push({ dateStart: d, dateEnd: d, session: "오전", school: "어드벤처관", students: 0 });
+    data.push({ dateStart: d, dateEnd: d, session: "오후", school: "어드벤처관", students: 0 });
+  });
+
+  // 가족SW체험교실 (세션 명시 없음)
+  ["2026-06-13","2026-06-20","2026-06-27",
+   "2026-07-04","2026-07-11","2026-07-18","2026-07-25",
+   "2026-08-01","2026-08-08","2026-08-22","2026-08-29",
+   "2026-09-05","2026-09-12","2026-09-19",
+   "2026-10-10","2026-10-17","2026-10-24","2026-10-31",
+   "2026-11-07","2026-11-14","2026-11-21","2026-11-28",
+   "2026-12-05","2026-12-12"
+  ].forEach((d) => {
+    data.push({ dateStart: d, dateEnd: d, session: "", school: "가족SW체험교실", students: 0 });
+  });
+
+  let added = 0, skipped = 0;
+  data.forEach((p) => {
+    const exists = rows.some((r) =>
+      toDateStr(r.dateStart) === p.dateStart &&
+      toDateStr(r.dateEnd) === p.dateEnd &&
+      String(r.session) === p.session &&
+      String(r.school) === p.school
+    );
+    if (exists) { skipped++; return; }
+    sh.appendRow([Utilities.getUuid(), p.dateStart, p.dateEnd, p.session, p.school, p.students, ""]);
+    added++;
+  });
+  Logger.log("added=" + added + " skipped=" + skipped);
+  return { added, skipped };
+}
+
+/**
  * 일회성 시드: 2026-05 → 2026-06 이월 데이터.
  * 6월 1일에 김경화/이경향/이윤미 각각 "연구이월" 3시간 추가.
  * 이미 동일한(name + date + kind) row가 있으면 건너뜀(중복 방지).

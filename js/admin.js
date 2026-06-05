@@ -207,9 +207,14 @@ window.Admin = {
         // 학생 프로그램 (불가 표시보다 먼저 — 위쪽에 보이게)
         programs.filter((p) => ds >= p.dateStart && ds <= p.dateEnd).forEach((p) => {
           const div = document.createElement("div");
-          div.className = "program program-" + (p.session === "오후" ? "pm" : "am");
-          div.textContent = `${p.session} ${p.school} ${p.students}명`;
-          div.title = `${p.dateStart}~${p.dateEnd} ${p.session} ${p.school} ${p.students}명${p.note ? " · " + p.note : ""}`;
+          const cls = p.session === "오후" ? "pm" : p.session === "오전" ? "am" : "none";
+          div.className = "program program-" + cls;
+          const parts = [];
+          if (p.session) parts.push(p.session);
+          parts.push(p.school);
+          if (p.students > 0) parts.push(p.students + "명");
+          div.textContent = parts.join(" ");
+          div.title = `${p.dateStart}${p.dateStart !== p.dateEnd ? "~" + p.dateEnd : ""} ${parts.join(" ")}${p.note ? " · " + p.note : ""}`;
           div.dataset.stop = "1";
           cell.appendChild(div);
         });
@@ -464,7 +469,7 @@ window.Admin = {
         const range = p.dateStart === p.dateEnd ? p.dateStart : `${p.dateStart} ~ ${p.dateEnd}`;
         html += `<tr>
           <td>${range}</td>
-          <td><span class="badge ${p.session === "오후" ? "badge-warn" : "badge-amber"}">${p.session}</span></td>
+          <td>${p.session ? `<span class="badge ${p.session === "오후" ? "badge-warn" : "badge-amber"}">${p.session}</span>` : '<span class="muted">—</span>'}</td>
           <td><b>${p.school}</b></td>
           <td>${p.students}명</td>
           <td class="muted">${p.note || ""}</td>
@@ -508,6 +513,7 @@ window.Admin = {
           <select id="p_session">
             <option value="오전" ${sess === "오전" ? "selected" : ""}>오전</option>
             <option value="오후" ${sess === "오후" ? "selected" : ""}>오후</option>
+            <option value="" ${sess === "" ? "selected" : ""}>(시간 없음)</option>
           </select>
         </label>
         <label>학교 <input type="text" id="p_school" value="${(p.school || "").replace(/"/g, "&quot;")}" placeholder="예: 호계초"/></label>
