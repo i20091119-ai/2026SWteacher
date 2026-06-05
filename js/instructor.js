@@ -79,6 +79,10 @@ window.Instructor = {
         });
       },
       onDayClick: async (ds, cell) => {
+        if (data.published) {
+          alert("확정 활동표가 공개되어 활동불가일을 변경할 수 없습니다.\n변경이 필요하면 수업 교체 기능을 사용하세요.");
+          return;
+        }
         const on = !mineDates.has(ds);
         // 즉각적인 시각 피드백 + 로컬 상태 갱신 (loadMonth 호출 안 함)
         if (on) {
@@ -126,7 +130,10 @@ window.Instructor = {
       li.innerHTML = `<span>${u.date}</span>`;
       const btn = document.createElement("button");
       btn.type = "button"; btn.textContent = "해제";
+      btn.disabled = !!data.published;
+      if (data.published) btn.title = "확정 활동표 공개 후엔 해제할 수 없습니다";
       btn.onclick = async () => {
+        if (data.published) return;
         // 로컬 상태에서 즉시 제거 + 캘린더에서 색 제거
         data.unavails = (data.unavails || []).filter((x) => !(x.name === me && x.date === u.date));
         Instructor.renderUnavailList(data);
@@ -146,23 +153,35 @@ window.Instructor = {
     const ym = document.getElementById("insMonth").value;
     const me = STATE.user.name;
     const s = (data.submits || []).find((s) => s.ym === ym && s.name === me);
+    const submitted = !!(s && s.submitted);
+    const published = !!data.published;
     const el = document.getElementById("insSubmitState");
     const btn = document.getElementById("insSubmitBtn");
-    if (s && s.submitted) {
-      // 제출 완료 상태
-      btn.textContent = "제출 완료";
-      btn.classList.remove("btn-primary");
-      btn.disabled = true;
+
+    if (submitted) {
       const t = String(s.submittedAt || "");
       const short = t.length >= 16 ? `${t.slice(5, 10)} ${t.slice(11, 16)}` : t;
       el.textContent = short ? `완료 · ${short}` : "완료";
       el.classList.remove("status-warn");
       el.classList.add("status-ok");
+      if (published) {
+        // 확정 공개 후 → 취소 불가
+        btn.textContent = "제출 완료";
+        btn.classList.remove("btn-primary");
+        btn.disabled = true;
+        btn.title = "확정 활동표가 공개되어 제출을 취소할 수 없습니다";
+      } else {
+        // 취소 가능
+        btn.textContent = "제출 취소";
+        btn.classList.remove("btn-primary");
+        btn.disabled = false;
+        btn.title = "";
+      }
     } else {
-      // 미제출
       btn.textContent = "제출하기";
       btn.classList.add("btn-primary");
       btn.disabled = false;
+      btn.title = "";
       el.textContent = "미제출";
       el.classList.remove("status-ok");
       el.classList.add("status-warn");
@@ -171,18 +190,22 @@ window.Instructor = {
   async submit() {
     const ym = document.getElementById("insMonth").value;
     const btn = document.getElementById("insSubmitBtn");
-    if (btn.disabled) return;  // 이미 제출 완료 상태면 무시
+    if (btn.disabled) return;
+    const data = STATE.cache.monthData[ym];
+    const me = STATE.user.name;
+    const s = (data && data.submits || []).find((s) => s.ym === ym && s.name === me);
+    const currentlySubmitted = !!(s && s.submitted);
+    const next = !currentlySubmitted;
     const prevText = btn.textContent;
     btn.disabled = true;
-    btn.textContent = "제출 중...";
+    btn.textContent = next ? "제출 중..." : "취소 중...";
     try {
-      await API.submitUnavailable(ym, true);
+      await API.submitUnavailable(ym, next);
       await Instructor.loadMonth();
-      // renderSubmitState가 자동으로 버튼 상태 갱신
     } catch (e) {
       btn.disabled = false;
       btn.textContent = prevText;
-      alert("제출 실패: " + e.message);
+      alert((next ? "제출" : "제출 취소") + " 실패: " + e.message);
     }
   },
   renderSchedule(ym, data) {
