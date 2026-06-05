@@ -291,13 +291,18 @@ window.Admin = {
     names.forEach((n) => {
       const rows = useLedger ? view[n].weeks : view[n];
       html += `<h3>${nameLabel(n)}</h3>`;
-      html += `<table><thead><tr><th>주 시작(일)</th><th>해설</th><th>지원</th><th>연구</th><th>합계</th>${useLedger ? "<th>잘린 시수</th>" : "<th>초과</th>"}</tr></thead><tbody>`;
+      // 실제 뷰: 이월(연구)/이월(지원) 컬럼 추가. 장부 뷰는 이월이 합계에 포함되므로 별도 컬럼 없음.
+      html += `<table><thead><tr><th>주 시작(일)</th><th>해설</th><th>지원</th><th>연구</th>` +
+        (useLedger ? "" : "<th>이월(연)</th><th>이월(지)</th>") +
+        `<th>합계</th>${useLedger ? "<th>잘린 시수</th>" : "<th>초과</th>"}</tr></thead><tbody>`;
       rows.forEach((w) => {
         const tag = useLedger
           ? (w.cutExplain > 0 ? "warn" : "")
           : (w.over > 0 ? "warn" : "");
         const last = useLedger ? w.cutExplain : w.over;
-        html += `<tr class="${tag}"><td>${w.wkStart}</td><td>${w.hExplain}</td><td>${w.hSupport}</td><td>${w.hResearch}</td><td>${w.total}</td><td>${last}</td></tr>`;
+        const carryCells = useLedger ? "" :
+          `<td>${w.carryResearch || 0}</td><td>${w.carrySupport || 0}</td>`;
+        html += `<tr class="${tag}"><td>${w.wkStart}</td><td>${w.hExplain}</td><td>${w.hSupport}</td><td>${w.hResearch}</td>${carryCells}<td>${w.total}</td><td>${last}</td></tr>`;
       });
       html += `</tbody></table>`;
       if (useLedger) {
@@ -389,10 +394,11 @@ window.Admin = {
       <label>메모 <input type="text" id="m_memo" value="${a.memo || ""}" style="width:100%"/></label>
       ${isEdit ? '<p><button type="button" id="m_del" style="color:#c53030">삭제</button></p>' : ""}
     `;
-    // form/kind 변경 시 표준 시수 자동 적용
+    // form/kind/role 변경 시 표준 시수 자동 적용
     const apply = () => Admin.applyDefaultHours();
     document.getElementById("m_kind").onchange = apply;
     document.getElementById("m_form").onchange = apply;
+    document.getElementById("m_role").onchange = apply;
     m.classList.remove("hidden");
     document.getElementById("modalCancel").onclick = () => m.classList.add("hidden");
     document.getElementById("modalSave").onclick = async () => {
@@ -616,12 +622,15 @@ window.Admin = {
   applyDefaultHours() {
     const kind = document.getElementById("m_kind").value;
     const form = document.getElementById("m_form").value;
+    const role = document.getElementById("m_role").value;
     if (kind !== "해설") return;
     let hE = null, hS = null, hR = null;
     if (form === "가족체험" || form === "학교체험") {
       hE = 3; hS = 0; hR = 0;
     } else if (form === "주말어드벤처") {
-      hE = 3; hS = 0.5; hR = 0;
+      // 일오전 = 해설 3h + 지원 1h (도합 4h)
+      // 토오전/토오후 = 해설 3h + 지원 0.5h
+      hE = 3; hS = (role === "일오전") ? 1 : 0.5; hR = 0;
     } else {
       return;
     }

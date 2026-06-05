@@ -38,11 +38,14 @@ window.Ledger = {
   },
 
   // 실제 활동 뷰: 합산 그대로, cap 초과 주는 over 표기.
-  // 이월 항목은 실제 뷰에서 제외 (이미 보전 처리이므로 실제 활동량 아님)
+  // 실제 활동(이월 제외)과 이월(연구이월/지원이월)을 별도 컬럼으로 분리해 함께 반환.
   actualView(ym, assignments) {
     const cap = Ledger.capForYm(ym);
     const weeks = Ledger.weeksOf(ym, assignments);
     const out = {};
+    const sumByKind = (items, kind) => items
+      .filter((it) => it.kind === kind)
+      .reduce((s, it) => s + Number(it.hExplain || 0) + Number(it.hSupport || 0) + Number(it.hResearch || 0), 0);
     Object.keys(weeks).forEach((name) => {
       out[name] = [];
       const ws = Object.keys(weeks[name]).sort();
@@ -52,9 +55,16 @@ window.Ledger = {
         const hE = itemsReal.reduce((s, it) => s + Number(it.hExplain || 0), 0);
         const hS = itemsReal.reduce((s, it) => s + Number(it.hSupport || 0), 0);
         const hR = itemsReal.reduce((s, it) => s + Number(it.hResearch || 0), 0);
+        const carryResearch = sumByKind(w.items, "연구이월");
+        const carrySupport  = sumByKind(w.items, "지원이월");
         const total = hE + hS + hR;
         const over = Math.max(0, total - cap);
-        out[name].push({ wkStart: wk, total, over, hExplain: hE, hSupport: hS, hResearch: hR, cap });
+        out[name].push({
+          wkStart: wk, total, over,
+          hExplain: hE, hSupport: hS, hResearch: hR,
+          carryResearch, carrySupport,
+          cap,
+        });
       });
     });
     return out;
