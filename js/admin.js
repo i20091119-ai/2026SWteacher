@@ -416,7 +416,16 @@ window.Admin = {
           const names = Array.from(document.querySelectorAll("#m_names input:checked")).map((c) => c.value);
           if (!names.length) { alert("강사를 1명 이상 선택하세요."); return; }
           const batch = names.map((name) => ({ name, ...common }));
-          await API.saveAssignmentsBatch(batch);
+          try {
+            await API.saveAssignmentsBatch(batch);
+          } catch (e) {
+            // 옛 GAS(새 배포 전)이면 saveAssignmentsBatch가 없음 → 단일 호출 loop로 fallback
+            if (/알 수 없는 action/.test(String(e.message))) {
+              for (const item of batch) await API.saveAssignment(item);
+            } else {
+              throw e;
+            }
+          }
         }
         m.classList.add("hidden");
         await Admin.loadMonth();
