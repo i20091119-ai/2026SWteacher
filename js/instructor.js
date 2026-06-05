@@ -15,7 +15,9 @@ window.Instructor = {
     console.log("[loadMonth]", ym, "me=", JSON.stringify(me),
       "전체 unavails 수=", (data.unavails || []).length,
       "내 unavails 수=", myUnavails.length,
-      "unavails 샘플:", (data.unavails || []).slice(0, 3),
+      "programs 수=", (data.programs || []).length,
+      "swaps 수=", (data.swaps || []).length,
+      "assignments 수=", (data.assignments || []).length,
     );
     STATE.cache.monthData[ym] = data;
     Instructor.renderCalendar(ym, data);
