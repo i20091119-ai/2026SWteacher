@@ -56,12 +56,49 @@ window.Admin = {
     sel.innerHTML = '<option value="">전체</option>' +
       STATE.instructors.map((n) => `<option>${n}</option>`).join("");
     sel.value = prevVal;
+    Admin.renderPublishState(ym, data);
     Admin.renderSubmit(data);
     Admin.renderCarryover(ym);
     Admin.renderSwaps(ym, data);
     Admin.renderPrograms(data);
     Admin.renderNextUp(ym, data);
     Admin.renderViews();
+  },
+
+  renderPublishState(ym, data) {
+    const btn = document.getElementById("admPublishBtn");
+    const pill = document.getElementById("admPublishState");
+    const published = !!data.published;
+    if (published) {
+      btn.textContent = "공개 취소";
+      btn.classList.remove("btn-primary");
+      pill.textContent = "✓ 공개됨 — 강사가 확정 활동표를 봅니다";
+      pill.classList.remove("status-warn");
+      pill.classList.add("status-ok");
+    } else {
+      btn.textContent = "활동표 공개";
+      btn.classList.add("btn-primary");
+      pill.textContent = "비공개 — 강사가 아직 못 봅니다";
+      pill.classList.remove("status-ok");
+      pill.classList.add("status-warn");
+    }
+    btn.onclick = async () => {
+      const next = !published;
+      if (next && !confirm(`${ym} 활동표를 공개하시겠습니까?\n공개 후 강사는 활동불가일을 더 이상 수정할 수 없고, 수업 교체 요청만 가능합니다.`)) return;
+      if (!next && !confirm(`${ym} 활동표 공개를 취소하시겠습니까?`)) return;
+      btn.disabled = true;
+      try {
+        await API.setSetting("publish." + ym, next ? 1 : "");
+        // 캐시 무효화 후 새 데이터 로드
+        delete STATE.cache.monthData[ym];
+        try { sessionStorage.removeItem("swt_month_" + ym); } catch (e) {}
+        await Admin.loadMonth();
+      } catch (e) {
+        alert("공개 상태 변경 실패: " + e.message);
+      } finally {
+        btn.disabled = false;
+      }
+    };
   },
 
   renderSubmit(data) {
