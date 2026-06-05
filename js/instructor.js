@@ -147,28 +147,42 @@ window.Instructor = {
     const me = STATE.user.name;
     const s = (data.submits || []).find((s) => s.ym === ym && s.name === me);
     const el = document.getElementById("insSubmitState");
+    const btn = document.getElementById("insSubmitBtn");
     if (s && s.submitted) {
-      el.textContent = `제출 완료 · ${s.submittedAt}`;
-      el.style.color = "var(--ok)";
+      // 제출 완료 상태
+      btn.textContent = "제출 완료";
+      btn.classList.remove("btn-primary");
+      btn.disabled = true;
+      const t = String(s.submittedAt || "");
+      const short = t.length >= 16 ? `${t.slice(5, 10)} ${t.slice(11, 16)}` : t;
+      el.textContent = short ? `완료 · ${short}` : "완료";
+      el.classList.remove("status-warn");
+      el.classList.add("status-ok");
     } else {
+      // 미제출
+      btn.textContent = "제출하기";
+      btn.classList.add("btn-primary");
+      btn.disabled = false;
       el.textContent = "미제출";
-      el.style.color = "var(--warn)";
+      el.classList.remove("status-ok");
+      el.classList.add("status-warn");
     }
   },
   async submit() {
     const ym = document.getElementById("insMonth").value;
     const btn = document.getElementById("insSubmitBtn");
+    if (btn.disabled) return;  // 이미 제출 완료 상태면 무시
     const prevText = btn.textContent;
     btn.disabled = true;
     btn.textContent = "제출 중...";
     try {
       await API.submitUnavailable(ym, true);
       await Instructor.loadMonth();
+      // renderSubmitState가 자동으로 버튼 상태 갱신
     } catch (e) {
-      alert("제출 실패: " + e.message);
-    } finally {
       btn.disabled = false;
       btn.textContent = prevText;
+      alert("제출 실패: " + e.message);
     }
   },
   renderSchedule(ym, data) {

@@ -300,9 +300,12 @@ button:focus-visible, .btn:focus-visible {
    툴바
    ======================================================================== */
 .toolbar {
-  display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+  display: flex; flex-wrap: wrap; gap: 12px; align-items: end;
   margin-bottom: 16px;
 }
+.toolbar > button,
+.toolbar > .seg,
+.toolbar > .status-pill { margin-bottom: 1px; }
 .card-toolbar {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -366,6 +369,14 @@ input[type="month"], input[type="date"] { color-scheme: light; }
   border-radius: 999px;
   background: var(--bg);
   color: var(--muted);
+}
+.status-pill.status-ok   { background: var(--success-soft); color: var(--success); }
+.status-pill.status-warn { background: var(--warn-soft);    color: var(--warn); }
+
+/* disabled 버튼 */
+button:disabled, .btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* ========================================================================
