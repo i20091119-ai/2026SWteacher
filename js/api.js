@@ -59,6 +59,7 @@ window.API = {
   saveUnavailable: (date, on) => api("saveUnavailable", { date, on }),
   submitUnavailable: (ym, submitted) => api("submitUnavailable", { ym, submitted }),
   saveAssignment: (a) => api("saveAssignment", a),
+  saveAssignmentsBatch: (assignments) => api("saveAssignmentsBatch", { assignments }),
   deleteAssignment: (id) => api("deleteAssignment", { id }),
   setSeed: (ym, kind, pointer) => api("setSeed", { ym, kind, pointer }),
   setSetting: (key, value) => api("setSetting", { key, value }),

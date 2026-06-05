@@ -351,19 +351,32 @@ window.Admin = {
     const m = document.getElementById("modal");
     const c = document.getElementById("modalContent");
     const title = document.getElementById("modalTitle");
-    title.textContent = a.id ? "배치 편집" : "배치 추가";
+    const isEdit = !!a.id;
+    title.textContent = isEdit ? "배치 편집" : "배치 추가";
     const kinds = ["해설", "연구", "지원", "연구이월", "지원이월"];
     const forms = ["", "학교체험", "가족체험", "주말어드벤처"];
     const roles = ["", "주", "보조", "토오전", "토오후", "일오전"];
     const opt = (arr, v) => arr.map((x) => `<option ${x === v ? "selected" : ""} value="${x}">${x || "-"}</option>`).join("");
+
+    // 강사 영역: 신규는 다중 체크박스, 편집은 단일 select
+    const allInstructors = [...STATE.instructors, "이상우"];
+    const namesHtml = isEdit
+      ? `<label>강사
+          <select id="m_name">
+            ${["", ...allInstructors].map((n) => `<option ${n === (a.name || "") ? "selected" : ""}>${n}</option>`).join("")}
+          </select>
+        </label>`
+      : `<label class="full">강사 <span class="muted">(여러 명 선택 가능)</span>
+          <div class="checkbox-group" id="m_names">
+            ${allInstructors.map((n) => `
+              <label class="chip"><input type="checkbox" value="${n}" /><span>${n}</span></label>
+            `).join("")}
+          </div>
+        </label>`;
+
     c.innerHTML = `
       <div class="grid-2">
         <label>날짜<input type="date" id="m_date" value="${a.date || ""}"/></label>
-        <label>강사
-          <select id="m_name">
-            ${["", ...STATE.instructors, "이상우"].map((n) => `<option ${n === (a.name || "") ? "selected" : ""}>${n}</option>`).join("")}
-          </select>
-        </label>
         <label>유형 <select id="m_kind">${opt(kinds, a.kind || "해설")}</select></label>
         <label>형태 <select id="m_form">${opt(forms, a.form || "")}</select></label>
         <label>역할 <select id="m_role">${opt(roles, a.role || "")}</select></label>
@@ -371,9 +384,10 @@ window.Admin = {
         <label>지원시수 <input type="number" step="0.5" id="m_hS" value="${a.hSupport || 0}"/></label>
         <label>연구시수 <input type="number" step="0.5" id="m_hR" value="${a.hResearch || 0}"/></label>
       </div>
+      ${namesHtml}
       <p class="muted" style="margin-top:8px">형태 선택 시 표준 시수가 자동으로 채워집니다(연구·지원 유형은 직접 입력).</p>
       <label>메모 <input type="text" id="m_memo" value="${a.memo || ""}" style="width:100%"/></label>
-      ${a.id ? '<p><button type="button" id="m_del" style="color:#c53030">삭제</button></p>' : ""}
+      ${isEdit ? '<p><button type="button" id="m_del" style="color:#c53030">삭제</button></p>' : ""}
     `;
     // form/kind 변경 시 표준 시수 자동 적용
     const apply = () => Admin.applyDefaultHours();
@@ -382,10 +396,8 @@ window.Admin = {
     m.classList.remove("hidden");
     document.getElementById("modalCancel").onclick = () => m.classList.add("hidden");
     document.getElementById("modalSave").onclick = async () => {
-      const payload = {
-        id: a.id || null,
+      const common = {
         date: document.getElementById("m_date").value,
-        name: document.getElementById("m_name").value,
         kind: document.getElementById("m_kind").value,
         form: document.getElementById("m_form").value,
         role: document.getElementById("m_role").value,
@@ -394,14 +406,23 @@ window.Admin = {
         hResearch: Number(document.getElementById("m_hR").value || 0),
         memo: document.getElementById("m_memo").value,
       };
-      if (!payload.date || !payload.name || !payload.kind) { alert("날짜·강사·유형은 필수입니다."); return; }
+      if (!common.date || !common.kind) { alert("날짜·유형은 필수입니다."); return; }
       try {
-        await API.saveAssignment(payload);
+        if (isEdit) {
+          const name = document.getElementById("m_name").value;
+          if (!name) { alert("강사를 선택하세요."); return; }
+          await API.saveAssignment({ id: a.id, name, ...common });
+        } else {
+          const names = Array.from(document.querySelectorAll("#m_names input:checked")).map((c) => c.value);
+          if (!names.length) { alert("강사를 1명 이상 선택하세요."); return; }
+          const batch = names.map((name) => ({ name, ...common }));
+          await API.saveAssignmentsBatch(batch);
+        }
         m.classList.add("hidden");
         await Admin.loadMonth();
       } catch (e) { alert("저장 실패: " + e.message); }
     };
-    if (a.id) {
+    if (isEdit) {
       document.getElementById("m_del").onclick = async () => {
         if (!confirm("삭제하시겠습니까?")) return;
         await API.deleteAssignment(a.id);

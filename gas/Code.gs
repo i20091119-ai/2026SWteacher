@@ -133,6 +133,10 @@ function dispatch(action, p, ctx) {
       if (ctx.role !== "admin") throw new Error("관리자 인증 필요");
       return withLock(() => saveAssignment(p));
     }
+    case "saveAssignmentsBatch": {
+      if (ctx.role !== "admin") throw new Error("관리자 인증 필요");
+      return withLock(() => saveAssignmentsBatch(p.assignments));
+    }
     case "deleteAssignment": {
       if (ctx.role !== "admin") throw new Error("관리자 인증 필요");
       return withLock(() => deleteAssignment(p.id));
@@ -440,6 +444,22 @@ function saveAssignment(a) {
       a.hExplain || 0, a.hSupport || 0, a.hResearch || 0, a.memo || ""]);
     return { id };
   }
+}
+
+function saveAssignmentsBatch(assignments) {
+  if (!Array.isArray(assignments) || !assignments.length) return { count: 0, ids: [] };
+  const sh = getSheet(TABS.schedule, HEADERS.schedule);
+  const ids = [];
+  const rows = assignments.map((a) => {
+    const id = Utilities.getUuid();
+    ids.push(id);
+    return [
+      id, a.date, a.kind, a.form || "", a.role || "", a.name,
+      a.hExplain || 0, a.hSupport || 0, a.hResearch || 0, a.memo || "",
+    ];
+  });
+  sh.getRange(sh.getLastRow() + 1, 1, rows.length, HEADERS.schedule.length).setValues(rows);
+  return { count: rows.length, ids };
 }
 
 function deleteAssignment(id) {

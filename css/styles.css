@@ -594,6 +594,36 @@ caption { padding: 8px; font-size: 13px; font-weight: 600; }
   font-size: 13px; color: var(--muted); font-weight: 500;
 }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.modal-body label.full { display: block; }
+
+.checkbox-group {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  margin-top: 6px;
+  padding: 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+.checkbox-group .chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--ink-2);
+  transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast);
+  user-select: none;
+}
+.checkbox-group .chip:hover { border-color: var(--accent); }
+.checkbox-group .chip:has(input:checked) {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+.checkbox-group .chip input { margin: 0; }
 
 /* ========================================================================
    2분할 그리드 (관리자에서 사용)
