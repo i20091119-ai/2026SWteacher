@@ -233,6 +233,50 @@ function readAll(sh) {
   }
   return rows;
 }
+
+/** ===== CacheService 캐시 =====
+ * 시트 readAll 결과를 스크립트 전역 캐시에 5분 보관. 쓰기 시 해당 탭만 invalidate.
+ * 캐시는 모든 사용자/요청이 공유 → 첫 호출만 시트 IO, 이후는 ~10ms.
+ */
+var _CACHE_TTL = 300; // seconds (max 21600)
+function _cacheKey(name) { return "tab_v2_" + name; }
+
+function _normalizeRow(r) {
+  // Date 객체는 JSON 직렬화 시 ISO string이 되는데, 역직렬화 후 비교를 위해 미리 yyyy-MM-dd로 변환.
+  // (HH:MM 등 시간 정보가 필요한 컬럼은 GAS 코드가 처음부터 string으로 저장하므로 영향 없음)
+  const out = {};
+  Object.keys(r).forEach((k) => {
+    const v = r[k];
+    out[k] = (v instanceof Date)
+      ? Utilities.formatDate(v, Session.getScriptTimeZone() || "Asia/Seoul", "yyyy-MM-dd")
+      : v;
+  });
+  return out;
+}
+
+function readAllCached(sh) {
+  var cache;
+  try { cache = CacheService.getScriptCache(); } catch (e) { return readAll(sh); }
+  var name = sh.getName();
+  var key = _cacheKey(name);
+  try {
+    var hit = cache.get(key);
+    if (hit) return JSON.parse(hit);
+  } catch (e) {}
+  var rows = readAll(sh).map(_normalizeRow);
+  try { cache.put(key, JSON.stringify(rows), _CACHE_TTL); } catch (e) {}
+  return rows;
+}
+
+function invalidateCache() {
+  try {
+    var cache = CacheService.getScriptCache();
+    for (var k in TABS) cache.remove(_cacheKey(TABS[k]));
+  } catch (e) {}
+}
+function invalidateTab(name) {
+  try { CacheService.getScriptCache().remove(_cacheKey(name)); } catch (e) {}
+}
 function writeRow(sh, headers, obj) {
   const row = headers.map((h) => (obj[h] !== undefined && obj[h] !== null) ? obj[h] : "");
   sh.appendRow(row);
@@ -293,11 +337,11 @@ function seedDefaultsIfEmpty() {
   if (seedRows.length) {
     seedSh.getRange(seedSh.getLastRow() + 1, 1, seedRows.length, 4).setValues(seedRows);
   }
+  invalidateCache();
 }
 
 function readSettings() {
-  // ensureTabs를 호출하지 않는다 — 호출자가 책임지거나, getSheet에 헤더 인자로 자체 보장.
-  const rows = readAll(getSheet(TABS.settings, HEADERS.settings));
+  const rows = readAllCached(getSheet(TABS.settings, HEADERS.settings));
   const obj = {};
   rows.forEach((r) => { obj[String(r.key)] = r.value; });
   return obj;
@@ -305,7 +349,7 @@ function readSettings() {
 
 function bootstrap() {
   ensureTabs();
-  const instructors = readAll(getSheet(TABS.instructors, HEADERS.instructors))
+  const instructors = readAllCached(getSheet(TABS.instructors, HEADERS.instructors))
     .map((r) => String(r.name))
     .filter(Boolean)
     .sort((a, b) => a.localeCompare(b, "ko"));
@@ -322,7 +366,7 @@ function getMonth(ym) {
   const prevYm = prevD.getFullYear() + "-" + String(prevD.getMonth() + 1).padStart(2, "0");
   const inPrev = (d) => String(d).slice(0, 7) === prevYm;
   // schedule을 한 번만 읽고 현재달/전월로 분기 (시트 액세스 비용 절감)
-  const allSchedule = readAll(getSheet(TABS.schedule));
+  const allSchedule = readAllCached(getSheet(TABS.schedule));
   const mapAssign = (r) => ({
     id: String(r.id),
     date: toDateStr(r.date),
@@ -337,16 +381,16 @@ function getMonth(ym) {
   });
   const assignments = allSchedule.filter((r) => inMonth(toDateStr(r.date))).map(mapAssign);
   const prevAssignments = allSchedule.filter((r) => inPrev(toDateStr(r.date))).map(mapAssign);
-  const unavails = readAll(getSheet(TABS.unavail))
+  const unavails = readAllCached(getSheet(TABS.unavail))
     .filter((r) => inMonth(toDateStr(r.date)))
     .map((r) => ({ name: String(r.name), date: toDateStr(r.date), reason: String(r.reason || "") }));
-  const submits = readAll(getSheet(TABS.submit))
+  const submits = readAllCached(getSheet(TABS.submit))
     .filter((r) => ymOf(r.ym) === ym)
     .map((r) => ({ ym: ymOf(r.ym), name: String(r.name), submitted: isTrue(r.submitted), submittedAt: String(r.submittedAt || "") }));
-  const seeds = readAll(getSheet(TABS.seed))
+  const seeds = readAllCached(getSheet(TABS.seed))
     .filter((r) => ymOf(r.ym) === ym)
     .map((r) => ({ ym: ymOf(r.ym), kind: String(r.kind), pointer: Number(r.pointer) }));
-  const swaps = readAll(getSheet(TABS.swap))
+  const swaps = readAllCached(getSheet(TABS.swap))
     .filter((r) => ymOf(r.ym) === ym)
     .map((r) => ({
       id: String(r.id),
@@ -360,7 +404,7 @@ function getMonth(ym) {
       finalizedAt: String(r.finalizedAt || ""),
       note: String(r.note || ""),
     }));
-  const programs = readAll(getSheet(TABS.program))
+  const programs = readAllCached(getSheet(TABS.program))
     .map((r) => ({
       id: String(r.id),
       dateStart: toDateStr(r.dateStart),
@@ -381,21 +425,24 @@ function getMonth(ym) {
 }
 
 function getCarryover(ym) {
-  return readAll(getSheet(TABS.carryover)).filter((r) => ymOf(r.srcYm) === ym);
+  return readAllCached(getSheet(TABS.carryover)).filter((r) => ymOf(r.srcYm) === ym);
 }
 
 function toDateStr(v) {
   if (v instanceof Date) {
-    // script timezone 기준으로 고정 (시트 timezone 차이로 인한 하루 밀림 방지)
     return Utilities.formatDate(v, Session.getScriptTimeZone() || "Asia/Seoul", "yyyy-MM-dd");
   }
-  return String(v == null ? "" : v);
+  var s = String(v == null ? "" : v);
+  // ISO timestamp 등 'YYYY-MM-DD...' 형태면 앞 10글자만 (캐시 후 ISO string 처리)
+  if (s.length >= 10 && /^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  return s;
 }
 
-// ym(YYYY-MM) 비교용 normalize. Google Sheets가 "2026-06"을 자동으로 Date로 인식해도 안전.
 function ymOf(v) {
   if (v instanceof Date) return toDateStr(v).slice(0, 7);
-  return String(v == null ? "" : v);
+  var s = String(v == null ? "" : v);
+  if (s.length >= 7 && /^\d{4}-\d{2}/.test(s)) return s.slice(0, 7);
+  return s;
 }
 
 function saveUnavailable(name, date, on, reason) {
@@ -408,6 +455,7 @@ function saveUnavailable(name, date, on, reason) {
   } else {
     if (idx !== -1) sh.deleteRow(rows[idx].__row);
   }
+  invalidateTab(TABS.unavail);
   // 등록 변경 시 제출 상태 해제
   setSubmit(name, date.slice(0, 7), false, "");
   return { ok: true };
@@ -424,6 +472,7 @@ function setSubmit(name, ym, submitted, submittedAt) {
   const idx = rows.findIndex((r) => ymOf(r.ym) === ym && String(r.name) === name);
   if (idx === -1) sh.appendRow([ym, name, submitted, submittedAt]);
   else sh.getRange(rows[idx].__row, 1, 1, 4).setValues([[ym, name, submitted, submittedAt]]);
+  invalidateTab(TABS.submit);
 }
 
 function saveAssignment(a) {
@@ -437,11 +486,13 @@ function saveAssignment(a) {
       a.id, a.date, a.kind, a.form || "", a.role || "", a.name,
       a.hExplain || 0, a.hSupport || 0, a.hResearch || 0, a.memo || "",
     ]]);
+    invalidateTab(TABS.schedule);
     return { id: a.id };
   } else {
     const id = Utilities.getUuid();
     sh.appendRow([id, a.date, a.kind, a.form || "", a.role || "", a.name,
       a.hExplain || 0, a.hSupport || 0, a.hResearch || 0, a.memo || ""]);
+    invalidateTab(TABS.schedule);
     return { id };
   }
 }
@@ -459,6 +510,7 @@ function saveAssignmentsBatch(assignments) {
     ];
   });
   sh.getRange(sh.getLastRow() + 1, 1, rows.length, HEADERS.schedule.length).setValues(rows);
+  invalidateTab(TABS.schedule);
   return { count: rows.length, ids };
 }
 
@@ -468,6 +520,7 @@ function deleteAssignment(id) {
   const idx = rows.findIndex((r) => String(r.id) === String(id));
   if (idx === -1) throw new Error("배치를 찾을 수 없습니다");
   sh.deleteRow(rows[idx].__row);
+  invalidateTab(TABS.schedule);
   return { ok: true };
 }
 
@@ -478,6 +531,7 @@ function setSeed(ym, kind, pointer) {
   const now = new Date().toISOString();
   if (idx === -1) sh.appendRow([ym, kind, pointer, now]);
   else sh.getRange(rows[idx].__row, 1, 1, 4).setValues([[ym, kind, pointer, now]]);
+  invalidateTab(TABS.seed);
   return { ok: true };
 }
 
@@ -487,6 +541,7 @@ function setSetting(key, value) {
   const idx = rows.findIndex((r) => String(r.key) === String(key));
   if (idx === -1) sh.appendRow([key, value]);
   else sh.getRange(rows[idx].__row, 1, 1, 2).setValues([[key, value]]);
+  invalidateTab(TABS.settings);
   return { ok: true };
 }
 
@@ -516,6 +571,7 @@ function createSwap(requester, p) {
   const now = new Date().toISOString();
   swapSh.appendRow([id, ym, String(p.assignmentId), requester, String(p.target),
     "pending_admin", now, "", "", String(p.note || "")]);
+  invalidateTab(TABS.swap);
   return { id };
 }
 
@@ -531,6 +587,7 @@ function _updateSwap(sh, row, patch) {
   const headers = HEADERS.swap;
   const merged = headers.map((h) => (patch[h] !== undefined ? patch[h] : (row[h] !== undefined ? row[h] : "")));
   sh.getRange(row.__row, 1, 1, headers.length).setValues([merged]);
+  invalidateTab(TABS.swap);
 }
 
 function approveSwap(adminEmail, p) {
@@ -543,6 +600,7 @@ function approveSwap(adminEmail, p) {
   if (String(a.name) !== String(row.requester)) throw new Error("원본 배치의 강사가 신청자와 다릅니다");
   const nameColIdx = HEADERS.schedule.indexOf("name") + 1;
   schSh.getRange(a.__row, nameColIdx, 1, 1).setValues([[String(row.target)]]);
+  invalidateTab(TABS.schedule);
   const now = new Date().toISOString();
   _updateSwap(sh, row, { status: "completed", respondedAt: now, finalizedAt: now });
   return { ok: true };
@@ -581,6 +639,7 @@ function createProgram(p) {
     Number(p.students || 0),
     String(p.note || ""),
   ]);
+  invalidateTab(TABS.program);
   return { id };
 }
 
@@ -599,6 +658,7 @@ function updateProgram(p) {
     Number(p.students || 0),
     String(p.note || ""),
   ]]);
+  invalidateTab(TABS.program);
   return { ok: true };
 }
 
@@ -609,6 +669,7 @@ function deleteProgram(id) {
   const idx = rows.findIndex((r) => String(r.id) === String(id));
   if (idx === -1) throw new Error("프로그램을 찾을 수 없습니다");
   sh.deleteRow(rows[idx].__row);
+  invalidateTab(TABS.program);
   return { ok: true };
 }
 
@@ -643,6 +704,7 @@ function seedPrograms2026() {
     added.push(p.school + " " + p.dateStart);
   });
   Logger.log("added=" + JSON.stringify(added) + " skipped=" + JSON.stringify(skipped));
+  invalidateCache();
   return { added, skipped };
 }
 
@@ -715,6 +777,7 @@ function seedPrograms2026Extra() {
     added++;
   });
   Logger.log("added=" + added + " skipped=" + skipped);
+  invalidateCache();
   return { added, skipped };
 }
 
@@ -745,5 +808,6 @@ function seedMayToJuneCarryover() {
     added.push(name);
   });
   Logger.log("added=" + JSON.stringify(added) + " skipped=" + JSON.stringify(skipped));
+  invalidateCache();
   return { added, skipped };
 }

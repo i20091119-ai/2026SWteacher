@@ -57,7 +57,8 @@ window.Ledger = {
         const hR = itemsReal.reduce((s, it) => s + Number(it.hResearch || 0), 0);
         const carryResearch = sumByKind(w.items, "연구이월");
         const carrySupport  = sumByKind(w.items, "지원이월");
-        const total = hE + hS + hR;
+        // 합계와 cap 초과 모두 이월 포함 (보전된 시수도 활동량으로 본다)
+        const total = hE + hS + hR + carryResearch + carrySupport;
         const over = Math.max(0, total - cap);
         out[name].push({
           wkStart: wk, total, over,
