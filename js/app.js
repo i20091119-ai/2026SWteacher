@@ -3,11 +3,20 @@ window.App = {
     Auth.init();
     STATE.restore();
     const btnWrap = document.getElementById("instructorButtons");
-    btnWrap.innerHTML = '<div class="muted">강사 목록을 불러오는 중...</div>';
+    // 캐시 hit → 즉시 표시 (페이지 새로고침 시 강사 목록을 기다리지 않음)
+    const cachedIns = STATE.restoreBootCache();
+    if (cachedIns && cachedIns.length) {
+      Auth.renderInstructorButtons(cachedIns);
+      Ledger.syncRates();
+    } else {
+      btnWrap.innerHTML = '<div class="muted">강사 목록을 불러오는 중...</div>';
+    }
+    // 백그라운드 fresh fetch
     try {
       const boot = await API.bootstrap();
       STATE.instructors = sortKo(boot.instructors || []);
       STATE.settings = boot.settings || {};
+      STATE.saveBootCache();
       if (!STATE.instructors.length) {
         btnWrap.innerHTML = '<div class="muted">등록된 강사가 없습니다. 관리자에게 문의하세요.</div>';
       } else {
@@ -16,10 +25,12 @@ window.App = {
       Ledger.syncRates();
     } catch (e) {
       console.error("bootstrap 실패", e);
-      btnWrap.innerHTML =
-        `<div class="muted">데이터를 불러오지 못했습니다: ${e.message}</div>` +
-        `<button type="button" id="retryBoot">다시 시도</button>`;
-      document.getElementById("retryBoot").onclick = () => location.reload();
+      if (!cachedIns) {
+        btnWrap.innerHTML =
+          `<div class="muted">데이터를 불러오지 못했습니다: ${e.message}</div>` +
+          `<button type="button" id="retryBoot">다시 시도</button>`;
+        document.getElementById("retryBoot").onclick = () => location.reload();
+      }
     }
     // GSI 스크립트 로드 대기 (최대 약 10초)
     const adminMsg = document.getElementById("adminLoginMsg");

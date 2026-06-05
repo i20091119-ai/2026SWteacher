@@ -9,17 +9,28 @@ window.Instructor = {
   },
   async loadMonth() {
     const ym = document.getElementById("insMonth").value;
-    const data = await API.getMonth(ym);
-    const me = STATE.user.name;
-    const myUnavails = (data.unavails || []).filter((u) => u.name === me);
-    console.log("[loadMonth]", ym, "me=", JSON.stringify(me),
-      "전체 unavails 수=", (data.unavails || []).length,
-      "내 unavails 수=", myUnavails.length,
-      "programs 수=", (data.programs || []).length,
-      "swaps 수=", (data.swaps || []).length,
-      "assignments 수=", (data.assignments || []).length,
-    );
-    STATE.cache.monthData[ym] = data;
+    const cached = STATE.cache.monthData[ym];
+    // 캐시 hit: 즉시 렌더 (사용자 체감 0초)
+    if (cached) Instructor._renderAll(ym, cached);
+    // 백그라운드 refresh
+    try {
+      const data = await API.getMonth(ym);
+      const me = STATE.user.name;
+      console.log("[loadMonth]", ym, "me=", JSON.stringify(me),
+        "전체 unavails 수=", (data.unavails || []).length,
+        "programs 수=", (data.programs || []).length,
+        "swaps 수=", (data.swaps || []).length,
+        "assignments 수=", (data.assignments || []).length,
+        cached ? "(cache→refresh)" : "(fresh)"
+      );
+      STATE.cache.monthData[ym] = data;
+      Instructor._renderAll(ym, data);
+    } catch (e) {
+      if (!cached) throw e;
+      console.warn("[loadMonth] refresh 실패, 캐시 유지", e);
+    }
+  },
+  _renderAll(ym, data) {
     Instructor.renderCalendar(ym, data);
     Instructor.renderUnavailList(data);
     Instructor.renderSubmitState(data);

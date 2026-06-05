@@ -22,13 +22,30 @@ window.Admin = {
 
   async loadMonth() {
     const ym = document.getElementById("admMonth").value;
-    const data = await API.getMonth(ym);
-    Admin.data = data;
-    STATE.cache.monthData[ym] = data;
-    // 강사 필터
+    const cached = STATE.cache.monthData[ym];
+    // 캐시 hit: 즉시 렌더
+    if (cached) {
+      Admin.data = cached;
+      Admin._renderAll(ym, cached);
+    }
+    // 백그라운드 refresh
+    try {
+      const data = await API.getMonth(ym);
+      Admin.data = data;
+      STATE.cache.monthData[ym] = data;
+      Admin._renderAll(ym, data);
+    } catch (e) {
+      if (!cached) throw e;
+      console.warn("[admin loadMonth] refresh 실패, 캐시 유지", e);
+    }
+  },
+
+  _renderAll(ym, data) {
     const sel = document.getElementById("admFilter");
+    const prevVal = sel.value;
     sel.innerHTML = '<option value="">전체</option>' +
       STATE.instructors.map((n) => `<option>${n}</option>`).join("");
+    sel.value = prevVal;
     Admin.renderSubmit(data);
     Admin.renderCarryover(ym);
     Admin.renderSwaps(ym, data);

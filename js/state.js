@@ -21,7 +21,30 @@ window.STATE.restore = function () {
 };
 window.STATE.clear = function () {
   STATE.user = null;
-  try { sessionStorage.removeItem("swt_user"); } catch (e) {}
+  try {
+    sessionStorage.removeItem("swt_user");
+    sessionStorage.removeItem("swt_instructors");
+    sessionStorage.removeItem("swt_settings");
+  } catch (e) {}
+};
+// 강사 목록/설정을 sessionStorage에 캐시 (페이지 새로고침 시 즉시 표시 + 백그라운드 refresh)
+window.STATE.saveBootCache = function () {
+  try {
+    sessionStorage.setItem("swt_instructors", JSON.stringify(STATE.instructors));
+    sessionStorage.setItem("swt_settings", JSON.stringify(STATE.settings));
+  } catch (e) {}
+};
+window.STATE.restoreBootCache = function () {
+  try {
+    const ins = sessionStorage.getItem("swt_instructors");
+    const set = sessionStorage.getItem("swt_settings");
+    if (set) STATE.settings = JSON.parse(set);
+    if (ins) {
+      STATE.instructors = JSON.parse(ins);
+      return STATE.instructors;
+    }
+  } catch (e) {}
+  return null;
 };
 
 // 한글 가나다 정렬 (기본 localeCompare(ko)로 충분).
