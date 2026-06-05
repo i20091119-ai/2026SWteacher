@@ -124,8 +124,19 @@ window.Instructor = {
   },
   async submit() {
     const ym = document.getElementById("insMonth").value;
-    await API.submitUnavailable(ym, true);
-    await Instructor.loadMonth();
+    const btn = document.getElementById("insSubmitBtn");
+    const prevText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "제출 중...";
+    try {
+      await API.submitUnavailable(ym, true);
+      await Instructor.loadMonth();
+    } catch (e) {
+      alert("제출 실패: " + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = prevText;
+    }
   },
   renderSchedule(ym, data) {
     const wrap = document.getElementById("insSchedule");

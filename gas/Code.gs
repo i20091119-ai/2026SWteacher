@@ -266,7 +266,7 @@ function seedDefaultsIfEmpty() {
   // 2026-06 시드: 가족체험 0 (보조=신미정), 주말어드벤처 2 (토오전=이경향)
   const seedSh = getSheet(TABS.seed, HEADERS.seed);
   const seed = readAll(seedSh);
-  const has = (ym, kind) => seed.some((s) => String(s.ym) === ym && String(s.kind) === kind);
+  const has = (ym, kind) => seed.some((s) => ymOf(s.ym) === ym && String(s.kind) === kind);
   const seedRows = [];
   const now = new Date().toISOString();
   if (!has("2026-06", "가족체험")) seedRows.push(["2026-06", "가족체험", 0, now]);
@@ -315,16 +315,16 @@ function getMonth(ym) {
     .filter((r) => inMonth(toDateStr(r.date)))
     .map((r) => ({ name: String(r.name), date: toDateStr(r.date), reason: String(r.reason || "") }));
   const submits = readAll(getSheet(TABS.submit, HEADERS.submit))
-    .filter((r) => String(r.ym) === ym)
-    .map((r) => ({ ym: String(r.ym), name: String(r.name), submitted: isTrue(r.submitted), submittedAt: String(r.submittedAt || "") }));
+    .filter((r) => ymOf(r.ym) === ym)
+    .map((r) => ({ ym: ymOf(r.ym), name: String(r.name), submitted: isTrue(r.submitted), submittedAt: String(r.submittedAt || "") }));
   const seeds = readAll(getSheet(TABS.seed, HEADERS.seed))
-    .filter((r) => String(r.ym) === ym)
-    .map((r) => ({ ym: String(r.ym), kind: String(r.kind), pointer: Number(r.pointer) }));
+    .filter((r) => ymOf(r.ym) === ym)
+    .map((r) => ({ ym: ymOf(r.ym), kind: String(r.kind), pointer: Number(r.pointer) }));
   const swaps = readAll(getSheet(TABS.swap, HEADERS.swap))
-    .filter((r) => String(r.ym) === ym)
+    .filter((r) => ymOf(r.ym) === ym)
     .map((r) => ({
       id: String(r.id),
-      ym: String(r.ym),
+      ym: ymOf(r.ym),
       assignmentId: String(r.assignmentId),
       requester: String(r.requester),
       target: String(r.target),
@@ -344,7 +344,7 @@ function getMonth(ym) {
 
 function getCarryover(ym) {
   ensureTabs();
-  return readAll(getSheet(TABS.carryover, HEADERS.carryover)).filter((r) => String(r.srcYm) === ym);
+  return readAll(getSheet(TABS.carryover, HEADERS.carryover)).filter((r) => ymOf(r.srcYm) === ym);
 }
 
 function toDateStr(v) {
@@ -352,6 +352,12 @@ function toDateStr(v) {
     // script timezone 기준으로 고정 (시트 timezone 차이로 인한 하루 밀림 방지)
     return Utilities.formatDate(v, Session.getScriptTimeZone() || "Asia/Seoul", "yyyy-MM-dd");
   }
+  return String(v == null ? "" : v);
+}
+
+// ym(YYYY-MM) 비교용 normalize. Google Sheets가 "2026-06"을 자동으로 Date로 인식해도 안전.
+function ymOf(v) {
+  if (v instanceof Date) return toDateStr(v).slice(0, 7);
   return String(v == null ? "" : v);
 }
 
@@ -378,7 +384,7 @@ function submitUnavailable(name, ym, submitted) {
 function setSubmit(name, ym, submitted, submittedAt) {
   const sh = getSheet(TABS.submit, HEADERS.submit);
   const rows = readAll(sh);
-  const idx = rows.findIndex((r) => String(r.ym) === ym && String(r.name) === name);
+  const idx = rows.findIndex((r) => ymOf(r.ym) === ym && String(r.name) === name);
   if (idx === -1) sh.appendRow([ym, name, submitted, submittedAt]);
   else sh.getRange(rows[idx].__row, 1, 1, 4).setValues([[ym, name, submitted, submittedAt]]);
 }
@@ -415,7 +421,7 @@ function deleteAssignment(id) {
 function setSeed(ym, kind, pointer) {
   const sh = getSheet(TABS.seed, HEADERS.seed);
   const rows = readAll(sh);
-  const idx = rows.findIndex((r) => String(r.ym) === ym && String(r.kind) === kind);
+  const idx = rows.findIndex((r) => ymOf(r.ym) === ym && String(r.kind) === kind);
   const now = new Date().toISOString();
   if (idx === -1) sh.appendRow([ym, kind, pointer, now]);
   else sh.getRange(rows[idx].__row, 1, 1, 4).setValues([[ym, kind, pointer, now]]);
