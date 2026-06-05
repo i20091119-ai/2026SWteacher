@@ -263,56 +263,87 @@ window.Instructor = {
       const co = Carryover.computeFromMonth(prev, prevData.assignments || []);
       const myRec = co[me];
       const cap = Ledger.capForYm(prev);
-      if (!myRec) {
-        wrap.innerHTML = `<div class="muted">${prev}에 서류상 빠진 근무가 없습니다. (주간 상한 ${cap}h)</div>`;
+      const placed = Carryover.placedInMonth(data.assignments || []);
+      const myPlaced = placed[me] || { research: 0, support: 0 };
+      const hasPlaced = myPlaced.research > 0 || myPlaced.support > 0;
+
+      if (!myRec && !hasPlaced) {
+        wrap.innerHTML = `<div class="muted">${prev}에 서류상 빠진 근무가 없고, ${ym}에 편성된 보전 항목도 없습니다. (주간 상한 ${cap}h)</div>`;
         return;
       }
-      const placed = Carryover.placedInMonth(data.assignments || []);
-      const status = Carryover.matchStatus({ [me]: myRec }, placed)[me];
 
-      const cutHtml = myRec.cutItems
-        .sort((a, b) => String(a.date).localeCompare(String(b.date)))
-        .map((it) => {
-          const tags = [];
-          if (it.cutHResearch > 0) tags.push(`<span class="co-tag research">연구 ${it.cutHResearch}h</span>`);
-          if (it.cutHSupport > 0) tags.push(`<span class="co-tag support">지원 ${it.cutHSupport}h</span>`);
-          return `<li><span class="co-date">${it.date}</span> ${tags.join(" ")}</li>`;
+      let html = "";
+
+      if (myRec) {
+        const cutHtml = myRec.cutItems
+          .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+          .map((it) => {
+            const tags = [];
+            if (it.cutHResearch > 0) tags.push(`<span class="co-tag research">연구 ${it.cutHResearch}h</span>`);
+            if (it.cutHSupport > 0) tags.push(`<span class="co-tag support">지원 ${it.cutHSupport}h</span>`);
+            return `<li><span class="co-date">${it.date}</span> ${tags.join(" ")}</li>`;
+          }).join("");
+
+        html += `
+          <div class="co-section">
+            <div class="co-section-title">⚠ ${prev}에서 서류상 빠진 실제 근무 <span class="muted">(주간 상한 ${cap}h 초과분)</span></div>
+            <ul class="co-cut-list">${cutHtml}</ul>
+          </div>
+          <div class="co-section">
+            <div class="co-section-title">📌 ${ym} 보전 권장 시수</div>
+            <div class="co-recommend">
+              ${myRec.recommendedResearchH > 0 ? `<span class="co-tag research">연구 ${myRec.recommendedResearchH}h</span>` : ""}
+              ${myRec.recommendedSupportH > 0 ? `<span class="co-tag support">지원 ${myRec.recommendedSupportH}h</span>` : ""}
+              <span class="muted">합계 ${myRec.recommendedH}h</span>
+            </div>
+          </div>
+        `;
+
+        const status = Carryover.matchStatus({ [me]: myRec }, placed)[me];
+        const statusKlass = "co-status-" + status.status;
+        const statusText = status.status === "complete" ? "✓ 보전 완료"
+          : status.status === "partial" ? "⚠ 일부 반영"
+          : "✗ 미반영";
+        const remParts = [];
+        if (status.remResearch > 0) remParts.push(`연구 ${status.remResearch}h`);
+        if (status.remSupport > 0) remParts.push(`지원 ${status.remSupport}h`);
+        const remainingLine = remParts.length
+          ? `<div class="muted" style="margin-top:4px">남은 보전: ${remParts.join(" · ")}</div>`
+          : "";
+
+        html += `
+          <div class="co-section">
+            <div class="co-section-title">📅 ${ym} 편성 현황</div>
+            <div class="co-status-line ${statusKlass}">
+              <span>연구이월 ${status.placedResearch}h · 지원이월 ${status.placedSupport}h</span>
+              <b>${statusText}</b>
+            </div>
+            ${remainingLine}
+          </div>
+        `;
+      } else if (hasPlaced) {
+        // 전월 잘림 데이터 없음 — 이번 달 보전 편성 항목 리스트만 표시
+        const items = (data.assignments || [])
+          .filter((a) => a.name === me && (a.kind === "연구이월" || a.kind === "지원이월"))
+          .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+        const itemsHtml = items.map((a) => {
+          const h = Number(a.hExplain || 0) + Number(a.hSupport || 0) + Number(a.hResearch || 0);
+          const tag = a.kind === "연구이월"
+            ? `<span class="co-tag research">연구 ${h}h</span>`
+            : `<span class="co-tag support">지원 ${h}h</span>`;
+          const memo = a.memo ? `<span class="muted"> · ${a.memo}</span>` : "";
+          return `<li><span class="co-date">${a.date}</span> ${tag}${memo}</li>`;
         }).join("");
-
-      const statusKlass = "co-status-" + status.status;
-      const statusText = status.status === "complete" ? "✓ 보전 완료"
-        : status.status === "partial" ? "⚠ 일부 반영"
-        : "✗ 미반영";
-
-      const remParts = [];
-      if (status.remResearch > 0) remParts.push(`연구 ${status.remResearch}h`);
-      if (status.remSupport > 0) remParts.push(`지원 ${status.remSupport}h`);
-      const remainingLine = remParts.length
-        ? `<div class="muted" style="margin-top:4px">남은 보전: ${remParts.join(" · ")}</div>`
-        : "";
-
-      wrap.innerHTML = `
-        <div class="co-section">
-          <div class="co-section-title">⚠ ${prev}에서 서류상 빠진 실제 근무 <span class="muted">(주간 상한 ${cap}h 초과분)</span></div>
-          <ul class="co-cut-list">${cutHtml}</ul>
-        </div>
-        <div class="co-section">
-          <div class="co-section-title">📌 ${ym} 보전 권장 시수</div>
-          <div class="co-recommend">
-            ${myRec.recommendedResearchH > 0 ? `<span class="co-tag research">연구 ${myRec.recommendedResearchH}h</span>` : ""}
-            ${myRec.recommendedSupportH > 0 ? `<span class="co-tag support">지원 ${myRec.recommendedSupportH}h</span>` : ""}
-            <span class="muted">합계 ${myRec.recommendedH}h</span>
+        html += `
+          <div class="co-section">
+            <div class="co-section-title">📅 ${ym} 편성된 보전 항목 <span class="muted">(${prev} 잘림 데이터는 시스템에 없음)</span></div>
+            <ul class="co-cut-list">${itemsHtml}</ul>
+            <div class="muted" style="margin-top:6px">합계: 연구 ${myPlaced.research}h · 지원 ${myPlaced.support}h</div>
           </div>
-        </div>
-        <div class="co-section">
-          <div class="co-section-title">📅 ${ym} 편성 현황</div>
-          <div class="co-status-line ${statusKlass}">
-            <span>연구이월 ${status.placedResearch}h · 지원이월 ${status.placedSupport}h</span>
-            <b>${statusText}</b>
-          </div>
-          ${remainingLine}
-        </div>
-      `;
+        `;
+      }
+
+      wrap.innerHTML = html;
     } catch (e) {
       wrap.innerHTML = `<div class="muted">전월(${prev}) 데이터 로드 실패: ${e.message}</div>`;
     }
