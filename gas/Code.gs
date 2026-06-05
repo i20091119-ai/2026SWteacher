@@ -309,33 +309,40 @@ function bootstrap() {
 }
 
 function getMonth(ym) {
-  ensureTabs();
   if (!ym) throw new Error("ym 누락");
+  // ensureTabs는 bootstrap에서만 호출. 매 getMonth마다 9 시트 헤더 검사는 비용 큼.
   const inMonth = (d) => String(d).slice(0, 7) === ym;
-  const assignments = readAll(getSheet(TABS.schedule, HEADERS.schedule))
-    .filter((r) => inMonth(toDateStr(r.date)))
-    .map((r) => ({
-      id: String(r.id),
-      date: toDateStr(r.date),
-      kind: String(r.kind || ""),
-      form: String(r.form || ""),
-      role: String(r.role || ""),
-      name: String(r.name || ""),
-      hExplain: Number(r.hExplain || 0),
-      hSupport: Number(r.hSupport || 0),
-      hResearch: Number(r.hResearch || 0),
-      memo: String(r.memo || ""),
-    }));
-  const unavails = readAll(getSheet(TABS.unavail, HEADERS.unavail))
+  // 전월 계산 (이월 계산용으로 함께 반환 — 별도 호출 회피)
+  const [py, pm] = ym.split("-").map(Number);
+  const prevD = new Date(py, pm - 2, 1);
+  const prevYm = prevD.getFullYear() + "-" + String(prevD.getMonth() + 1).padStart(2, "0");
+  const inPrev = (d) => String(d).slice(0, 7) === prevYm;
+  // schedule을 한 번만 읽고 현재달/전월로 분기 (시트 액세스 비용 절감)
+  const allSchedule = readAll(getSheet(TABS.schedule));
+  const mapAssign = (r) => ({
+    id: String(r.id),
+    date: toDateStr(r.date),
+    kind: String(r.kind || ""),
+    form: String(r.form || ""),
+    role: String(r.role || ""),
+    name: String(r.name || ""),
+    hExplain: Number(r.hExplain || 0),
+    hSupport: Number(r.hSupport || 0),
+    hResearch: Number(r.hResearch || 0),
+    memo: String(r.memo || ""),
+  });
+  const assignments = allSchedule.filter((r) => inMonth(toDateStr(r.date))).map(mapAssign);
+  const prevAssignments = allSchedule.filter((r) => inPrev(toDateStr(r.date))).map(mapAssign);
+  const unavails = readAll(getSheet(TABS.unavail))
     .filter((r) => inMonth(toDateStr(r.date)))
     .map((r) => ({ name: String(r.name), date: toDateStr(r.date), reason: String(r.reason || "") }));
-  const submits = readAll(getSheet(TABS.submit, HEADERS.submit))
+  const submits = readAll(getSheet(TABS.submit))
     .filter((r) => ymOf(r.ym) === ym)
     .map((r) => ({ ym: ymOf(r.ym), name: String(r.name), submitted: isTrue(r.submitted), submittedAt: String(r.submittedAt || "") }));
-  const seeds = readAll(getSheet(TABS.seed, HEADERS.seed))
+  const seeds = readAll(getSheet(TABS.seed))
     .filter((r) => ymOf(r.ym) === ym)
     .map((r) => ({ ym: ymOf(r.ym), kind: String(r.kind), pointer: Number(r.pointer) }));
-  const swaps = readAll(getSheet(TABS.swap, HEADERS.swap))
+  const swaps = readAll(getSheet(TABS.swap))
     .filter((r) => ymOf(r.ym) === ym)
     .map((r) => ({
       id: String(r.id),
@@ -349,7 +356,7 @@ function getMonth(ym) {
       finalizedAt: String(r.finalizedAt || ""),
       note: String(r.note || ""),
     }));
-  const programs = readAll(getSheet(TABS.program, HEADERS.program))
+  const programs = readAll(getSheet(TABS.program))
     .map((r) => ({
       id: String(r.id),
       dateStart: toDateStr(r.dateStart),
@@ -366,12 +373,11 @@ function getMonth(ym) {
     .filter((k) => k.indexOf("holiday.") === 0 && String(settings[k]))
     .map((k) => k.substring("holiday.".length))
     .filter((d) => d.slice(0, 7) === ym);
-  return { ym, assignments, unavails, submits, seeds, swaps, programs, holidays, published: isTrue(settings["publish." + ym]) };
+  return { ym, assignments, prevAssignments, unavails, submits, seeds, swaps, programs, holidays, published: isTrue(settings["publish." + ym]) };
 }
 
 function getCarryover(ym) {
-  ensureTabs();
-  return readAll(getSheet(TABS.carryover, HEADERS.carryover)).filter((r) => ymOf(r.srcYm) === ym);
+  return readAll(getSheet(TABS.carryover)).filter((r) => ymOf(r.srcYm) === ym);
 }
 
 function toDateStr(v) {

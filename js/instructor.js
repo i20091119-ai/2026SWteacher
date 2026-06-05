@@ -268,15 +268,14 @@ window.Instructor = {
     } catch (e) { alert("실패: " + e.message); }
   },
 
-  async renderMyCarryover(ym, data) {
+  renderMyCarryover(ym, data) {
     const wrap = document.getElementById("insMyCarryover");
     if (!wrap) return;
     const me = STATE.user.name;
     const prev = prevYm(ym);
-    wrap.innerHTML = '<div class="muted">불러오는 중...</div>';
     try {
-      const prevData = await API.getMonth(prev);
-      const co = Carryover.computeFromMonth(prev, prevData.assignments || []);
+      // 전월 데이터는 동일 getMonth 응답의 prevAssignments에서 (별도 호출 안 함)
+      const co = Carryover.computeFromMonth(prev, data.prevAssignments || []);
       const myRec = co[me];
       const cap = Ledger.capForYm(prev);
       const placed = Carryover.placedInMonth(data.assignments || []);
@@ -361,7 +360,7 @@ window.Instructor = {
 
       wrap.innerHTML = html;
     } catch (e) {
-      wrap.innerHTML = `<div class="muted">전월(${prev}) 데이터 로드 실패: ${e.message}</div>`;
+      wrap.innerHTML = `<div class="muted">전월(${prev}) 이월 계산 실패: ${e.message}</div>`;
     }
   },
 };

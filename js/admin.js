@@ -30,7 +30,7 @@ window.Admin = {
     sel.innerHTML = '<option value="">전체</option>' +
       STATE.instructors.map((n) => `<option>${n}</option>`).join("");
     Admin.renderSubmit(data);
-    await Admin.renderCarryover(ym);
+    Admin.renderCarryover(ym);
     Admin.renderSwaps(ym, data);
     Admin.renderPrograms(data);
     Admin.renderNextUp(ym, data);
@@ -50,13 +50,13 @@ window.Admin = {
       (allSubmitted ? '<caption class="ok">전원 제출 · 편성 가능</caption>' : '<caption class="warn">미제출자 있음</caption>');
   },
 
-  async renderCarryover(ym) {
+  renderCarryover(ym) {
     const target = document.getElementById("admCarryover");
     const prev = prevYm(ym);
-    target.innerHTML = '<div class="muted">불러오는 중...</div>';
     try {
-      const prevData = await API.getMonth(prev);
-      const co = Carryover.computeFromMonth(prev, prevData.assignments || []);
+      // 전월 데이터는 동일 getMonth 응답의 prevAssignments에서 (별도 호출 안 함)
+      const prevAssignments = (Admin.data && Admin.data.prevAssignments) || [];
+      const co = Carryover.computeFromMonth(prev, prevAssignments);
       const names = Object.keys(co).sort((a, b) => a.localeCompare(b, "ko"));
       const cap = Ledger.capForYm(prev);
       if (!names.length) {
@@ -132,7 +132,7 @@ window.Admin = {
       html += `<p class="muted" style="margin-top:8px">관리자가 ${ym} 캘린더에 <b>연구이월</b>/<b>지원이월</b> kind로 항목을 추가하면 "편성" 행이 자동으로 갱신됩니다.</p>`;
       target.innerHTML = html;
     } catch (e) {
-      target.innerHTML = `<div class="muted">전월(${prev}) 데이터 로드 실패: ${e.message}</div>`;
+      target.innerHTML = `<div class="muted">전월(${prev}) 이월 계산 실패: ${e.message}</div>`;
     }
   },
 
