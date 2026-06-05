@@ -479,7 +479,7 @@ function createSwap(requester, p) {
   if (String(a.name) === String(p.target)) throw new Error("자기 자신과는 교체할 수 없습니다");
   const ym = toDateStr(a.date).slice(0, 7);
   const settings = readSettings();
-  if (!isTrue(settings["publish." + ym])) throw new Error("확정 근무표 발표 후에 신청 가능");
+  if (!isTrue(settings["publish." + ym])) throw new Error("확정 활동표 발표 후에 신청 가능");
   // 같은 배치에 대해 진행 중인 요청이 있으면 막음
   const swapSh = getSheet(TABS.swap, HEADERS.swap);
   const swaps = readAll(swapSh);

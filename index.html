@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>경남수학문화관 SW해설강사 근무 일정 관리</title>
+<title>경남수학문화관 SW해설강사 활동 일정 관리</title>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
 <link rel="stylesheet" href="css/styles.css" />
@@ -14,7 +14,7 @@
     <div class="brand-mark" aria-hidden="true">SWT</div>
     <div class="brand-text">
       <div class="brand-title">경남수학문화관</div>
-      <div class="brand-sub">SW해설강사 근무 일정</div>
+      <div class="brand-sub">SW해설강사 활동 일정</div>
     </div>
   </div>
   <div class="who">
@@ -28,8 +28,8 @@
   <section id="page-login" class="page">
     <div class="hero">
       <div class="hero-eyebrow">경남수학문화관</div>
-      <h1 class="hero-title">SW해설강사 근무 일정 관리</h1>
-      <p class="hero-sub">근무불가일 등록, 월별 편성 확인, 수업 교체 신청까지 한 곳에서.</p>
+      <h1 class="hero-title">SW해설강사 활동 일정 관리</h1>
+      <p class="hero-sub">활동불가일 등록, 월별 편성 확인, 수업 교체 신청까지 한 곳에서.</p>
     </div>
     <div class="login-grid">
       <div class="card login-card">
@@ -57,7 +57,7 @@
     <div class="page-head">
       <div>
         <div class="page-eyebrow">강사 페이지</div>
-        <h1 class="page-title">내 근무 관리</h1>
+        <h1 class="page-title">내 활동 관리</h1>
       </div>
     </div>
 
@@ -72,32 +72,32 @@
 
     <div class="card">
       <div class="card-head">
-        <h2>근무불가일 등록</h2>
+        <h2>활동불가일 등록</h2>
         <span class="muted">달력에서 날짜를 누르면 등록/해제됩니다.</span>
       </div>
       <div id="insCalendar"></div>
     </div>
     <div class="card">
-      <div class="card-head"><h2>내 근무불가일</h2></div>
+      <div class="card-head"><h2>내 활동불가일</h2></div>
       <ul id="insUnavailList" class="list"></ul>
     </div>
 
     <div class="card">
-      <div class="card-head"><h2>확정 근무표 (전체)</h2></div>
+      <div class="card-head"><h2>확정 활동표 (전체)</h2></div>
       <div id="insSchedule"></div>
     </div>
 
     <div class="card" id="insMyCarryoverCard">
       <div class="card-head">
         <h2>내 이월 내역</h2>
-        <span class="muted">전월에 서류상 빠진 실제 근무와 이번 달 보전 현황입니다.</span>
+        <span class="muted">전월에 서류상 빠진 실제 활동과 이번 달 보전 현황입니다.</span>
       </div>
       <div id="insMyCarryover"></div>
     </div>
 
     <div class="card">
       <div class="card-head"><h2>수업 교체</h2></div>
-      <p class="muted">확정 근무표 발표 이후, 본인 수업을 다른 강사에게 양도할 수 있습니다. 신청 후 관리자가 승인하면 자동으로 근무표에 반영됩니다.</p>
+      <p class="muted">확정 활동표 발표 이후, 본인 수업을 다른 강사에게 양도할 수 있습니다. 신청 후 관리자가 승인하면 자동으로 활동표에 반영됩니다.</p>
       <h3 class="subsection">내 수업에서 교체 신청</h3>
       <div id="insSwapNew"></div>
       <div id="insSwapSent"></div>
@@ -119,7 +119,7 @@
         <input type="month" id="admMonth" />
       </label>
       <div class="seg">
-        <button type="button" data-view="actual" class="active">실제 근무 뷰</button>
+        <button type="button" data-view="actual" class="active">실제 활동 뷰</button>
         <button type="button" data-view="ledger">장부 뷰</button>
       </div>
       <label class="field">
@@ -130,7 +130,7 @@
     </div>
 
     <div class="card" id="admSubmitStatus">
-      <div class="card-head"><h2>근무불가일 제출 현황</h2></div>
+      <div class="card-head"><h2>활동불가일 제출 현황</h2></div>
       <table id="submitTable"></table>
     </div>
 

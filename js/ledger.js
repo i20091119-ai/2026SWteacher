@@ -1,4 +1,4 @@
-// 실제 근무 뷰 / 장부 뷰 계산
+// 실제 활동 뷰 / 장부 뷰 계산
 window.Ledger = {
   CAP: 14,
   rateExplain: 30000,
@@ -37,8 +37,8 @@ window.Ledger = {
     return map;
   },
 
-  // 실제 근무 뷰: 합산 그대로, cap 초과 주는 over 표기.
-  // 이월 항목은 실제 뷰에서 제외 (이미 보전 처리이므로 실제 근무량 아님)
+  // 실제 활동 뷰: 합산 그대로, cap 초과 주는 over 표기.
+  // 이월 항목은 실제 뷰에서 제외 (이미 보전 처리이므로 실제 활동량 아님)
   actualView(ym, assignments) {
     const cap = Ledger.capForYm(ym);
     const weeks = Ledger.weeksOf(ym, assignments);

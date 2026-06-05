@@ -498,7 +498,7 @@ input[type="month"], input[type="date"] { color-scheme: light; }
 }
 
 /* ========================================================================
-   리스트 (내 근무불가일 등)
+   리스트 (내 활동불가일 등)
    ======================================================================== */
 .list li, ul#insUnavailList li {
   display: flex; justify-content: space-between; align-items: center; gap: 10px;

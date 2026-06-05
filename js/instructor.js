@@ -184,7 +184,7 @@ window.Instructor = {
     if (inbox) inbox.innerHTML = "";
     sent.innerHTML = ""; newWrap.innerHTML = "";
     if (!data.published) {
-      newWrap.innerHTML = '<div class="muted">확정 근무표 발표 후 신청 가능합니다.</div>';
+      newWrap.innerHTML = '<div class="muted">확정 활동표 발표 후 신청 가능합니다.</div>';
       return;
     }
     const swaps = data.swaps || [];
@@ -284,7 +284,7 @@ window.Instructor = {
       const hasPlaced = myPlaced.research > 0 || myPlaced.support > 0;
 
       if (!myRec && !hasPlaced) {
-        wrap.innerHTML = `<div class="muted">${prev}에 서류상 빠진 근무가 없고, ${ym}에 편성된 보전 항목도 없습니다. (주간 상한 ${cap}h)</div>`;
+        wrap.innerHTML = `<div class="muted">${prev}에 서류상 빠진 활동이 없고, ${ym}에 편성된 보전 항목도 없습니다. (주간 상한 ${cap}h)</div>`;
         return;
       }
 
@@ -302,7 +302,7 @@ window.Instructor = {
 
         html += `
           <div class="co-section">
-            <div class="co-section-title">⚠ ${prev}에서 서류상 빠진 실제 근무 <span class="muted">(주간 상한 ${cap}h 초과분)</span></div>
+            <div class="co-section-title">⚠ ${prev}에서 서류상 빠진 실제 활동 <span class="muted">(주간 상한 ${cap}h 초과분)</span></div>
             <ul class="co-cut-list">${cutHtml}</ul>
           </div>
           <div class="co-section">
