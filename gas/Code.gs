@@ -20,6 +20,7 @@ const TABS = {
   settings: "설정",
   carryover: "이월",
   swap: "교체요청",
+  program: "학생프로그램",
 };
 
 const HEADERS = {
@@ -31,6 +32,7 @@ const HEADERS = {
   settings: ["key", "value"],
   carryover: ["srcYm", "name", "overflowExplainH", "compensationAmount", "recommendedH", "status", "note"],
   swap: ["id", "ym", "assignmentId", "requester", "target", "status", "requestedAt", "respondedAt", "finalizedAt", "note"],
+  program: ["id", "dateStart", "dateEnd", "session", "school", "students", "note"],
 };
 
 function isTrue(v) {
@@ -159,6 +161,18 @@ function dispatch(action, p, ctx) {
       if (ctx.role !== "admin") throw new Error("관리자 인증 필요");
       return withLock(() => rejectSwap(ctx.email, p));
     }
+    case "createProgram": {
+      if (ctx.role !== "admin") throw new Error("관리자 인증 필요");
+      return withLock(() => createProgram(p));
+    }
+    case "updateProgram": {
+      if (ctx.role !== "admin") throw new Error("관리자 인증 필요");
+      return withLock(() => updateProgram(p));
+    }
+    case "deleteProgram": {
+      if (ctx.role !== "admin") throw new Error("관리자 인증 필요");
+      return withLock(() => deleteProgram(p.id));
+    }
     default: throw new Error("알 수 없는 action: " + action);
   }
 }
@@ -230,6 +244,7 @@ function ensureTabs() {
   getSheet(TABS.settings, HEADERS.settings);
   getSheet(TABS.carryover, HEADERS.carryover);
   getSheet(TABS.swap, HEADERS.swap);
+  getSheet(TABS.program, HEADERS.program);
   seedDefaultsIfEmpty();
 }
 
@@ -334,12 +349,24 @@ function getMonth(ym) {
       finalizedAt: String(r.finalizedAt || ""),
       note: String(r.note || ""),
     }));
+  const programs = readAll(getSheet(TABS.program, HEADERS.program))
+    .map((r) => ({
+      id: String(r.id),
+      dateStart: toDateStr(r.dateStart),
+      dateEnd: toDateStr(r.dateEnd),
+      session: String(r.session || ""),
+      school: String(r.school || ""),
+      students: Number(r.students || 0),
+      note: String(r.note || ""),
+    }))
+    .filter((p) => p.dateStart.slice(0, 7) === ym || p.dateEnd.slice(0, 7) === ym
+      || (p.dateStart < ym + "-01" && p.dateEnd > ym + "-31"));
   const settings = readSettings();
   const holidays = Object.keys(settings)
     .filter((k) => k.indexOf("holiday.") === 0 && String(settings[k]))
     .map((k) => k.substring("holiday.".length))
     .filter((d) => d.slice(0, 7) === ym);
-  return { ym, assignments, unavails, submits, seeds, swaps, holidays, published: isTrue(settings["publish." + ym]) };
+  return { ym, assignments, unavails, submits, seeds, swaps, programs, holidays, published: isTrue(settings["publish." + ym]) };
 }
 
 function getCarryover(ym) {
@@ -509,6 +536,88 @@ function cancelSwap(requester, p) {
   if (String(row.status) !== "pending_admin") throw new Error("이미 종료된 요청입니다");
   _updateSwap(sh, row, { status: "cancelled", finalizedAt: new Date().toISOString() });
   return { ok: true };
+}
+
+/** ===== 학생 프로그램 =====
+ * 시트 '학생프로그램' 탭. 1 row = 한 기간(시작일~종료일)의 한 프로그램.
+ * 캘린더 셀에 표시되며 강사·관리자 모두 본다.
+ */
+function createProgram(p) {
+  if (!p || !p.dateStart || !p.school) throw new Error("시작일과 학교는 필수입니다");
+  const sh = getSheet(TABS.program, HEADERS.program);
+  const id = Utilities.getUuid();
+  sh.appendRow([
+    id,
+    String(p.dateStart),
+    String(p.dateEnd || p.dateStart),
+    String(p.session || ""),
+    String(p.school),
+    Number(p.students || 0),
+    String(p.note || ""),
+  ]);
+  return { id };
+}
+
+function updateProgram(p) {
+  if (!p || !p.id) throw new Error("id 누락");
+  const sh = getSheet(TABS.program, HEADERS.program);
+  const rows = readAll(sh);
+  const idx = rows.findIndex((r) => String(r.id) === String(p.id));
+  if (idx === -1) throw new Error("프로그램을 찾을 수 없습니다");
+  sh.getRange(rows[idx].__row, 1, 1, HEADERS.program.length).setValues([[
+    p.id,
+    String(p.dateStart),
+    String(p.dateEnd || p.dateStart),
+    String(p.session || ""),
+    String(p.school),
+    Number(p.students || 0),
+    String(p.note || ""),
+  ]]);
+  return { ok: true };
+}
+
+function deleteProgram(id) {
+  if (!id) throw new Error("id 누락");
+  const sh = getSheet(TABS.program, HEADERS.program);
+  const rows = readAll(sh);
+  const idx = rows.findIndex((r) => String(r.id) === String(id));
+  if (idx === -1) throw new Error("프로그램을 찾을 수 없습니다");
+  sh.deleteRow(rows[idx].__row);
+  return { ok: true };
+}
+
+/**
+ * 일회성 시드: 사용자 제공 학생 프로그램 데이터 (2026 운영).
+ * 동일한 (dateStart, dateEnd, session, school)이 이미 있으면 건너뜀(중복 방지).
+ */
+function seedPrograms2026() {
+  const sh = getSheet(TABS.program, HEADERS.program);
+  const rows = readAll(sh);
+  const data = [
+    { dateStart: "2026-06-09", dateEnd: "2026-06-12", session: "오전", school: "호계초", students: 22 },
+    { dateStart: "2026-06-16", dateEnd: "2026-06-18", session: "오전", school: "호계초", students: 22 },
+    { dateStart: "2026-06-23", dateEnd: "2026-06-23", session: "오전", school: "진례초", students: 30 },
+    { dateStart: "2026-07-01", dateEnd: "2026-07-03", session: "오전", school: "창신중", students: 30 },
+    { dateStart: "2026-07-08", dateEnd: "2026-07-08", session: "오전", school: "우산초", students: 18 },
+    { dateStart: "2026-07-09", dateEnd: "2026-07-09", session: "오전", school: "진전중", students: 30 },
+    { dateStart: "2026-09-15", dateEnd: "2026-09-15", session: "오전", school: "대산초", students: 27 },
+    { dateStart: "2026-09-22", dateEnd: "2026-09-22", session: "오후", school: "진해남중", students: 30 },
+  ];
+  const added = [];
+  const skipped = [];
+  data.forEach((p) => {
+    const exists = rows.some((r) =>
+      toDateStr(r.dateStart) === p.dateStart &&
+      toDateStr(r.dateEnd) === p.dateEnd &&
+      String(r.session) === p.session &&
+      String(r.school) === p.school
+    );
+    if (exists) { skipped.push(p.school + " " + p.dateStart); return; }
+    sh.appendRow([Utilities.getUuid(), p.dateStart, p.dateEnd, p.session, p.school, p.students, ""]);
+    added.push(p.school + " " + p.dateStart);
+  });
+  Logger.log("added=" + JSON.stringify(added) + " skipped=" + JSON.stringify(skipped));
+  return { added, skipped };
 }
 
 /**

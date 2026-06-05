@@ -66,4 +66,7 @@ window.API = {
   cancelSwap: (swapId) => api("cancelSwap", { swapId }),
   approveSwap: (swapId) => api("approveSwap", { swapId }),
   rejectSwap: (swapId) => api("rejectSwap", { swapId }),
+  createProgram: (p) => api("createProgram", p),
+  updateProgram: (p) => api("updateProgram", p),
+  deleteProgram: (id) => api("deleteProgram", { id }),
 };

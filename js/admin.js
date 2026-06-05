@@ -32,6 +32,7 @@ window.Admin = {
     Admin.renderSubmit(data);
     await Admin.renderCarryover(ym);
     Admin.renderSwaps(ym, data);
+    Admin.renderPrograms(data);
     Admin.renderNextUp(ym, data);
     Admin.renderViews();
   },
@@ -191,17 +192,27 @@ window.Admin = {
     const wrap = document.getElementById("admCalendar");
     wrap.innerHTML = "";
     const ym = document.getElementById("admMonth").value;
-    const data = Admin.data || { assignments: [], unavails: [], holidays: [] };
+    const data = Admin.data || { assignments: [], unavails: [], holidays: [], programs: [] };
     const filterName = document.getElementById("admFilter").value;
     const holidays = new Set(data.holidays || []);
     const unavByDate = {};
     (data.unavails || []).forEach((u) => { (unavByDate[u.date] ||= []).push(u); });
+    const programs = data.programs || [];
     const visibleKinds = Admin.view === "ledger"
       ? null  // 장부 뷰는 모든 항목 표시
       : (a) => a.kind !== "연구이월" && a.kind !== "지원이월";
     const grid = Cal.buildGrid(ym, {
       holidays,
       renderDay: (ds, cell) => {
+        // 학생 프로그램 (불가 표시보다 먼저 — 위쪽에 보이게)
+        programs.filter((p) => ds >= p.dateStart && ds <= p.dateEnd).forEach((p) => {
+          const div = document.createElement("div");
+          div.className = "program program-" + (p.session === "오후" ? "pm" : "am");
+          div.textContent = `${p.session} ${p.school} ${p.students}명`;
+          div.title = `${p.dateStart}~${p.dateEnd} ${p.session} ${p.school} ${p.students}명${p.note ? " · " + p.note : ""}`;
+          div.dataset.stop = "1";
+          cell.appendChild(div);
+        });
         if (unavByDate[ds] && unavByDate[ds].length) {
           const flag = document.createElement("div");
           flag.className = "uflag";
@@ -438,6 +449,104 @@ window.Admin = {
       await fn(swapId);
       await Admin.loadMonth();
     } catch (e) { alert(label + " 실패: " + e.message); }
+  },
+
+  renderPrograms(data) {
+    const wrap = document.getElementById("admPrograms");
+    if (!wrap) return;
+    const programs = (data.programs || []).slice()
+      .sort((a, b) => a.dateStart.localeCompare(b.dateStart));
+    if (!programs.length) {
+      wrap.innerHTML = '<div class="muted">이 달에 등록된 학생 프로그램이 없습니다.</div>';
+    } else {
+      let html = '<table><thead><tr><th>기간</th><th>시간</th><th>학교</th><th>학생수</th><th>메모</th><th></th></tr></thead><tbody>';
+      programs.forEach((p) => {
+        const range = p.dateStart === p.dateEnd ? p.dateStart : `${p.dateStart} ~ ${p.dateEnd}`;
+        html += `<tr>
+          <td>${range}</td>
+          <td><span class="badge ${p.session === "오후" ? "badge-warn" : "badge-amber"}">${p.session}</span></td>
+          <td><b>${p.school}</b></td>
+          <td>${p.students}명</td>
+          <td class="muted">${p.note || ""}</td>
+          <td>
+            <button data-id="${p.id}" data-act="edit" class="btn">편집</button>
+            <button data-id="${p.id}" data-act="del" class="btn">삭제</button>
+          </td>
+        </tr>`;
+      });
+      html += '</tbody></table>';
+      wrap.innerHTML = html;
+      wrap.querySelectorAll("button[data-act='edit']").forEach((b) => {
+        b.onclick = () => {
+          const p = programs.find((x) => x.id === b.dataset.id);
+          Admin.openProgramModal(p);
+        };
+      });
+      wrap.querySelectorAll("button[data-act='del']").forEach((b) => {
+        b.onclick = async () => {
+          if (!confirm("프로그램을 삭제하시겠습니까?")) return;
+          try { await API.deleteProgram(b.dataset.id); await Admin.loadMonth(); }
+          catch (e) { alert("삭제 실패: " + e.message); }
+        };
+      });
+    }
+    const addBtn = document.getElementById("admProgramAddBtn");
+    if (addBtn) addBtn.onclick = () => Admin.openProgramModal(null);
+  },
+
+  openProgramModal(p) {
+    p = p || {};
+    const m = document.getElementById("modal");
+    const c = document.getElementById("modalContent");
+    document.getElementById("modalTitle").textContent = p.id ? "학생 프로그램 편집" : "학생 프로그램 추가";
+    const sess = p.session || "오전";
+    c.innerHTML = `
+      <div class="grid-2">
+        <label>시작일 <input type="date" id="p_start" value="${p.dateStart || ""}"/></label>
+        <label>종료일 <input type="date" id="p_end" value="${p.dateEnd || p.dateStart || ""}"/></label>
+        <label>시간대
+          <select id="p_session">
+            <option value="오전" ${sess === "오전" ? "selected" : ""}>오전</option>
+            <option value="오후" ${sess === "오후" ? "selected" : ""}>오후</option>
+          </select>
+        </label>
+        <label>학교 <input type="text" id="p_school" value="${(p.school || "").replace(/"/g, "&quot;")}" placeholder="예: 호계초"/></label>
+        <label>학생수 <input type="number" id="p_students" value="${p.students || 0}" min="0"/></label>
+      </div>
+      <label>메모 <input type="text" id="p_note" value="${(p.note || "").replace(/"/g, "&quot;")}" style="width:100%"/></label>
+      ${p.id ? `<p><button type="button" id="p_del" style="color:#c53030">삭제</button></p>` : ""}
+    `;
+    m.classList.remove("hidden");
+    document.getElementById("modalCancel").onclick = () => m.classList.add("hidden");
+    document.getElementById("modalSave").onclick = async () => {
+      const payload = {
+        id: p.id || null,
+        dateStart: document.getElementById("p_start").value,
+        dateEnd: document.getElementById("p_end").value || document.getElementById("p_start").value,
+        session: document.getElementById("p_session").value,
+        school: document.getElementById("p_school").value.trim(),
+        students: Number(document.getElementById("p_students").value || 0),
+        note: document.getElementById("p_note").value.trim(),
+      };
+      if (!payload.dateStart || !payload.school) { alert("시작일·학교는 필수입니다."); return; }
+      if (payload.dateEnd < payload.dateStart) { alert("종료일이 시작일보다 빠릅니다."); return; }
+      try {
+        if (payload.id) await API.updateProgram(payload);
+        else await API.createProgram(payload);
+        m.classList.add("hidden");
+        await Admin.loadMonth();
+      } catch (e) { alert("저장 실패: " + e.message); }
+    };
+    if (p.id) {
+      document.getElementById("p_del").onclick = async () => {
+        if (!confirm("삭제하시겠습니까?")) return;
+        try {
+          await API.deleteProgram(p.id);
+          m.classList.add("hidden");
+          await Admin.loadMonth();
+        } catch (e) { alert("삭제 실패: " + e.message); }
+      };
+    }
   },
 
   // 형태별 표준 시수 자동 채움 (해설 kind에만 적용)

@@ -450,6 +450,25 @@ input[type="month"], input[type="date"] { color-scheme: light; }
   transition: background var(--t-fast), color var(--t-fast);
 }
 .cal-cell .add:hover { background: var(--accent); color: #fff; text-decoration: none; }
+.cal-cell .program {
+  font-size: 11px; font-weight: 600;
+  padding: 3px 7px;
+  border-radius: 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-left: 3px solid;
+}
+.cal-cell .program.program-am {
+  background: #fef9c3;
+  color: #854d0e;
+  border-color: #ca8a04;
+}
+.cal-cell .program.program-pm {
+  background: #fce7f3;
+  color: #9d174d;
+  border-color: #db2777;
+}
 .cal-cell .uflag {
   position: absolute; top: 4px; right: 6px;
   font-size: 10px; font-weight: 600;

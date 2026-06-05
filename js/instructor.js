@@ -31,12 +31,21 @@ window.Instructor = {
       (data.unavails || []).filter((u) => u.name === me).map((u) => u.date)
     );
     const holidays = new Set((data.holidays || []));
+    const programs = data.programs || [];
     const wrap = document.getElementById("insCalendar");
     wrap.innerHTML = "";
     const grid = Cal.buildGrid(ym, {
       holidays,
       renderDay: (ds, cell) => {
         if (mineDates.has(ds)) cell.classList.add("unavail");
+        // 학생 프로그램 (강사·관리자 공통)
+        programs.filter((p) => ds >= p.dateStart && ds <= p.dateEnd).forEach((p) => {
+          const div = document.createElement("div");
+          div.className = "program program-" + (p.session === "오후" ? "pm" : "am");
+          div.textContent = `${p.session} ${p.school} ${p.students}명`;
+          div.title = `${p.dateStart}~${p.dateEnd} ${p.session} ${p.school} ${p.students}명${p.note ? " · " + p.note : ""}`;
+          cell.appendChild(div);
+        });
         // 확정된 본인 배치 표시
         (data.assignments || []).filter((a) => a.name === me && a.date === ds).forEach((a) => {
           const s = document.createElement("div");
