@@ -9,25 +9,31 @@ window.Instructor = {
   },
   async loadMonth() {
     const ym = document.getElementById("insMonth").value;
-    const cached = STATE.cache.monthData[ym];
-    // 캐시 hit: 즉시 렌더 (사용자 체감 0초)
+    const cached = STATE.restoreMonthCache(ym);
     if (cached) Instructor._renderAll(ym, cached);
-    // 백그라운드 refresh
     try {
       const data = await API.getMonth(ym);
-      const me = STATE.user.name;
-      console.log("[loadMonth]", ym, "me=", JSON.stringify(me),
-        "전체 unavails 수=", (data.unavails || []).length,
-        "programs 수=", (data.programs || []).length,
-        "swaps 수=", (data.swaps || []).length,
-        "assignments 수=", (data.assignments || []).length,
-        cached ? "(cache→refresh)" : "(fresh)"
+      console.log("[loadMonth]", ym, cached ? "(cache→refresh)" : "(fresh)",
+        "programs=", (data.programs || []).length,
+        "assignments=", (data.assignments || []).length,
       );
-      STATE.cache.monthData[ym] = data;
+      STATE.saveMonthCache(ym, data);
       Instructor._renderAll(ym, data);
+      // 인접 달 prefetch (백그라운드)
+      Instructor._prefetchNeighbors(ym);
     } catch (e) {
       if (!cached) throw e;
       console.warn("[loadMonth] refresh 실패, 캐시 유지", e);
+    }
+  },
+  async _prefetchNeighbors(ym) {
+    const targets = [prevYm(ym), nextYm(ym)];
+    for (const t of targets) {
+      if (STATE.cache.monthData[t]) continue;
+      try {
+        const d = await API.getMonth(t);
+        STATE.saveMonthCache(t, d);
+      } catch (e) { /* prefetch 실패는 조용히 무시 */ }
     }
   },
   _renderAll(ym, data) {

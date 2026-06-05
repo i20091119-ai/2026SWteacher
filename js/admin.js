@@ -22,21 +22,31 @@ window.Admin = {
 
   async loadMonth() {
     const ym = document.getElementById("admMonth").value;
-    const cached = STATE.cache.monthData[ym];
-    // 캐시 hit: 즉시 렌더
+    const cached = STATE.restoreMonthCache(ym);
     if (cached) {
       Admin.data = cached;
       Admin._renderAll(ym, cached);
     }
-    // 백그라운드 refresh
     try {
       const data = await API.getMonth(ym);
       Admin.data = data;
-      STATE.cache.monthData[ym] = data;
+      STATE.saveMonthCache(ym, data);
       Admin._renderAll(ym, data);
+      Admin._prefetchNeighbors(ym);
     } catch (e) {
       if (!cached) throw e;
       console.warn("[admin loadMonth] refresh 실패, 캐시 유지", e);
+    }
+  },
+
+  async _prefetchNeighbors(ym) {
+    const targets = [prevYm(ym), nextYm(ym)];
+    for (const t of targets) {
+      if (STATE.cache.monthData[t]) continue;
+      try {
+        const d = await API.getMonth(t);
+        STATE.saveMonthCache(t, d);
+      } catch (e) { /* 조용히 무시 */ }
     }
   },
 

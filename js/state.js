@@ -46,6 +46,23 @@ window.STATE.restoreBootCache = function () {
   } catch (e) {}
   return null;
 };
+// 월별 데이터도 sessionStorage 캐시 (페이지 새로고침 후에도 즉시)
+window.STATE.saveMonthCache = function (ym, data) {
+  STATE.cache.monthData[ym] = data;
+  try { sessionStorage.setItem("swt_month_" + ym, JSON.stringify(data)); } catch (e) {}
+};
+window.STATE.restoreMonthCache = function (ym) {
+  if (STATE.cache.monthData[ym]) return STATE.cache.monthData[ym];
+  try {
+    const v = sessionStorage.getItem("swt_month_" + ym);
+    if (v) {
+      const d = JSON.parse(v);
+      STATE.cache.monthData[ym] = d;
+      return d;
+    }
+  } catch (e) {}
+  return null;
+};
 
 // 한글 가나다 정렬 (기본 localeCompare(ko)로 충분).
 window.sortKo = function (arr) {
