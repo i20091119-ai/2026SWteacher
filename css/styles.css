@@ -372,7 +372,7 @@ input[type="month"], input[type="date"] { color-scheme: light; }
    캘린더
    ======================================================================== */
 .calendar {
-  display: grid; grid-template-columns: repeat(7, 1fr);
+  display: grid; grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 6px;
   background: transparent;
 }
@@ -395,6 +395,7 @@ input[type="month"], input[type="date"] { color-scheme: light; }
   display: flex; flex-direction: column; gap: 4px;
   cursor: pointer;
   overflow: hidden;
+  min-width: 0;
   transition: background var(--t-fast), border-color var(--t-fast),
               transform var(--t-fast), box-shadow var(--t-fast);
 }
