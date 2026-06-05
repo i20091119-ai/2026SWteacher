@@ -225,9 +225,8 @@ window.Admin = {
     const unavByDate = {};
     (data.unavails || []).forEach((u) => { (unavByDate[u.date] ||= []).push(u); });
     const programs = data.programs || [];
-    const visibleKinds = Admin.view === "ledger"
-      ? null  // 장부 뷰는 모든 항목 표시
-      : (a) => a.kind !== "연구이월" && a.kind !== "지원이월";
+    // 캘린더는 항상 모든 배치를 보여줌 (이월 항목도 점선 박스로 시각 구분됨)
+    const visibleKinds = null;
     const grid = Cal.buildGrid(ym, {
       holidays,
       renderDay: (ds, cell) => {
