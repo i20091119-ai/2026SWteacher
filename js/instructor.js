@@ -218,7 +218,7 @@ window.Instructor = {
     (data.assignments || []).slice().sort((a, b) => a.date.localeCompare(b.date)).forEach((a) => {
       const tr = document.createElement("tr");
       const h = Number(a.hExplain || 0) + Number(a.hSupport || 0) + Number(a.hResearch || 0);
-      tr.innerHTML = `<td>${a.date}</td><td>${a.kind}</td><td>${a.form || "-"}</td><td>${a.role || "-"}</td><td>${a.name}</td><td>${h}</td>`;
+      tr.innerHTML = `<td>${a.date}</td><td>${a.kind}</td><td>${a.form || "-"}</td><td>${a.role || "-"}</td><td>${nameLabel(a.name)}</td><td>${h}</td>`;
       tb.appendChild(tr);
     });
     tbl.appendChild(tb);
@@ -263,7 +263,7 @@ window.Instructor = {
           cancelled: "취소됨",
         })[s.status] || s.status;
         const span = document.createElement("span");
-        span.innerHTML = `${labelA(a)} → <b>${s.target}</b> <span class="muted">· ${statusLabel}</span>`;
+        span.innerHTML = `${labelA(a)} → <b>${nameLabel(s.target)}</b> <span class="muted">· ${statusLabel}</span>`;
         div.appendChild(span);
         if (s.status === "pending_admin") {
           const cancel = document.createElement("button");
@@ -298,7 +298,7 @@ window.Instructor = {
       } else {
         const sel = document.createElement("select");
         sel.innerHTML = '<option value="">대상 강사 선택</option>' +
-          others.map((n) => `<option>${n}</option>`).join("");
+          others.map((n) => `<option${n === "이상우" ? ' style="color:#d97706;font-weight:700"' : ""}>${n}</option>`).join("");
         const btn = document.createElement("button");
         btn.type = "button"; btn.textContent = "교체 신청";
         btn.onclick = async () => {

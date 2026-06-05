@@ -69,6 +69,13 @@ window.sortKo = function (arr) {
   return arr.slice().sort((a, b) => a.localeCompare(b, "ko"));
 };
 
+// 강사 이름 HTML — 파견교사(이상우)는 주황색 강조
+window.nameLabel = function (name) {
+  const n = String(name == null ? "" : name);
+  if (n === "이상우") return `<span class="name-emergency" title="파견교사">${n}</span>`;
+  return n;
+};
+
 // 날짜 유틸
 window.ymOf = function (d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;

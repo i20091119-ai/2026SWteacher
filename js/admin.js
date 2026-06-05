@@ -71,7 +71,7 @@ window.Admin = {
     const rows = STATE.instructors.map((n) => {
       const s = (data.submits || []).find((x) => x.ym === ym && x.name === n);
       if (!s || !s.submitted) allSubmitted = false;
-      return `<tr><td>${n}</td><td>${s && s.submitted ? "제출" : "미제출"}</td><td>${s && s.submittedAt ? s.submittedAt : "-"}</td></tr>`;
+      return `<tr><td>${nameLabel(n)}</td><td>${s && s.submitted ? "제출" : "미제출"}</td><td>${s && s.submittedAt ? s.submittedAt : "-"}</td></tr>`;
     }).join("");
     tbl.innerHTML = `<thead><tr><th>강사</th><th>제출 여부</th><th>제출 일시</th></tr></thead><tbody>${rows}</tbody>` +
       (allSubmitted ? '<caption class="ok">전원 제출 · 편성 가능</caption>' : '<caption class="warn">미제출자 있음</caption>');
@@ -110,7 +110,7 @@ window.Admin = {
       html += `</div>`;
 
       html += `<div class="co-matrix-wrap"><table class="co-matrix"><thead><tr><th>주차</th>`;
-      names.forEach((n) => { html += `<th>${n}</th>`; });
+      names.forEach((n) => { html += `<th>${nameLabel(n)}</th>`; });
       html += `</tr></thead><tbody>`;
 
       weeks.forEach((wk, idx) => {
@@ -177,8 +177,8 @@ window.Admin = {
       <div class="grid-2">
         <div>
           <h3>가족체험SW · 다음 회차</h3>
-          <p>주강사: <b>${fam.main}</b>${fam.main === "이상우" ? `<span class="muted"> (내부 순번: ${fam.mainInternal})</span>` : ""}<br>
-          보조강사: <b>${fam.sub}</b><br>
+          <p>주강사: <b>${nameLabel(fam.main)}</b>${fam.main === "이상우" ? `<span class="muted"> (내부 순번: ${nameLabel(fam.mainInternal)})</span>` : ""}<br>
+          보조강사: <b>${nameLabel(fam.sub)}</b><br>
           <span class="muted">현재 ${ym} 가족체험 편성 회차: ${fam.placedCount} · 다음 회차 후 포인터: ${fam.nextPointerAfter}</span></p>
           <label>가족체험 시작 포인터(이 달):
             <input type="number" min="0" max="3" value="${sF}" id="seedFamily" />
@@ -187,7 +187,7 @@ window.Admin = {
         </div>
         <div>
           <h3>주말어드벤처 · 다음 묶음</h3>
-          <ul>${wk.slots.map((s) => `<li>${s.role}: <b>${s.name}</b></li>`).join("")}</ul>
+          <ul>${wk.slots.map((s) => `<li>${s.role}: <b>${nameLabel(s.name)}</b></li>`).join("")}</ul>
           <span class="muted">현재 ${ym} 주말어드벤처 편성 묶음: ${wk.placedBundles} · 묶음 후 포인터: ${wk.nextPointerAfter}</span><br>
           <label>주말어드벤처 시작 포인터(이 달):
             <input type="number" min="0" max="3" value="${sW}" id="seedWeekend" />
@@ -257,7 +257,8 @@ window.Admin = {
           const s = document.createElement("div");
           s.className = `slot kind-${a.kind.replace(/[()]/g, "")}`;
           s.dataset.stop = "1";
-          s.textContent = `${Admin.labelOf(a)} · ${a.name} (${Number(a.hExplain || 0) + Number(a.hSupport || 0) + Number(a.hResearch || 0)}h)`;
+          const h = Number(a.hExplain || 0) + Number(a.hSupport || 0) + Number(a.hResearch || 0);
+          s.innerHTML = `${Admin.labelOf(a)} · ${nameLabel(a.name)} (${h}h)`;
           s.onclick = () => Admin.openModal(a);
           cell.appendChild(s);
         });
@@ -289,7 +290,7 @@ window.Admin = {
     let html = "";
     names.forEach((n) => {
       const rows = useLedger ? view[n].weeks : view[n];
-      html += `<h3>${n}</h3>`;
+      html += `<h3>${nameLabel(n)}</h3>`;
       html += `<table><thead><tr><th>주 시작(일)</th><th>해설</th><th>지원</th><th>연구</th><th>합계</th>${useLedger ? "<th>잘린 시수</th>" : "<th>초과</th>"}</tr></thead><tbody>`;
       rows.forEach((w) => {
         const tag = useLedger
@@ -340,7 +341,7 @@ window.Admin = {
       const aSum = (actual[n] || []).reduce((s, w) => s + w.total, 0);
       const lTot = (ledger[n] && ledger[n].totals) || { hExplain: 0, hSupport: 0, hResearch: 0, amount: 0 };
       const lSum = lTot.hExplain + lTot.hSupport + lTot.hResearch;
-      html += `<tr><td>${n}</td><td>${aSum}</td><td>${lSum}</td><td>${lTot.amount.toLocaleString()}</td></tr>`;
+      html += `<tr><td>${nameLabel(n)}</td><td>${aSum}</td><td>${lSum}</td><td>${lTot.amount.toLocaleString()}</td></tr>`;
     });
     html += "</tbody></table>";
     wrap.innerHTML = html;
@@ -368,7 +369,7 @@ window.Admin = {
       : `<label class="full">강사 <span class="muted">(여러 명 선택 가능)</span>
           <div class="checkbox-group" id="m_names">
             ${allInstructors.map((n) => `
-              <label class="chip"><input type="checkbox" value="${n}" /><span>${n}</span></label>
+              <label class="chip"><input type="checkbox" value="${n}" />${nameLabel(n) !== n ? nameLabel(n) : `<span>${n}</span>`}</label>
             `).join("")}
           </div>
         </label>`;
@@ -476,7 +477,7 @@ window.Admin = {
         const div = document.createElement("div");
         div.className = "swap-row swap-status-pending_admin";
         const span = document.createElement("span");
-        span.innerHTML = `<b>${s.requester}</b> → <b>${s.target}</b> · ${labelA(a)} <span class="muted">(${(s.requestedAt || "").slice(0, 10)})</span>`;
+        span.innerHTML = `<b>${nameLabel(s.requester)}</b> → <b>${nameLabel(s.target)}</b> · ${labelA(a)} <span class="muted">(${(s.requestedAt || "").slice(0, 10)})</span>`;
         div.appendChild(span);
         const ok = document.createElement("button");
         ok.type = "button"; ok.textContent = "승인"; ok.className = "primary";
@@ -499,7 +500,7 @@ window.Admin = {
         const div = document.createElement("div");
         div.className = "swap-row swap-status-" + s.status;
         const tag = ({ completed: "✓ 승인", rejected: "✗ 거절", cancelled: "· 취소" })[s.status] || s.status;
-        div.innerHTML = `<span><b>${s.requester}</b> → <b>${s.target}</b> · ${labelA(a)} <span class="muted">· ${tag} · ${(s.finalizedAt || s.requestedAt || "").slice(0, 10)}</span></span>`;
+        div.innerHTML = `<span><b>${nameLabel(s.requester)}</b> → <b>${nameLabel(s.target)}</b> · ${labelA(a)} <span class="muted">· ${tag} · ${(s.finalizedAt || s.requestedAt || "").slice(0, 10)}</span></span>`;
         recentList.appendChild(div);
       });
     }
