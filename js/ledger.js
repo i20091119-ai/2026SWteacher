@@ -71,12 +71,10 @@ window.Ledger = {
     return out;
   },
 
-  // 장부 뷰: 해설 우선 보존, 연구·지원이 cap 초과 시 잘림.
-  // 잘림 규칙:
-  //   1) 해설 시수 먼저 인정 (cap 초과해도 일단 그대로 — 해설은 잘리지 않음)
-  //   2) 남은 cap 안에서 연구·지원 항목을 날짜순으로 채움
-  //   3) cap 초과 시점의 항목은 비율로 부분 잘림, 이후 항목은 전부 이월
-  //   4) 이월 항목(kind=연구이월/지원이월)은 그대로 인정 (이미 보전된 시수)
+  // 장부 뷰: 관리자가 모달에서 'carry=true'로 표시한 항목만 당월 장부에서 제외.
+  //   - 이월 항목(kind=연구이월/지원이월)은 그대로 인정 (이미 보전된 시수)
+  //   - carry=true인 활동은 cutItems로 분류 → 합계/금액에서 제외 + 다음 달 보전 권장에 포함
+  //   - carry=false인 활동은 cap 무관하게 모두 합산 (자동 분할 없음)
   ledgerView(ym, assignments) {
     Ledger.syncRates();
     const cap = Ledger.capForYm(ym);
@@ -88,60 +86,35 @@ window.Ledger = {
       let totalE = 0, totalS = 0, totalR = 0;
       ws.forEach((wk) => {
         const w = weeks[name][wk];
-        const carryItems = w.items.filter((it) => it.kind === "연구이월" || it.kind === "지원이월");
-        const carryHS = carryItems.reduce((s, it) => s + Number(it.hSupport || 0) + (it.kind === "지원이월" ? Number(it.hExplain || 0) : 0), 0);
-        const carryHR = carryItems.reduce((s, it) => s + Number(it.hResearch || 0) + (it.kind === "연구이월" ? Number(it.hExplain || 0) : 0), 0);
+        // 이월 보전 항목 (전월 잘린 것에 대한 보전)
+        const carryRow = w.items.filter((it) => it.kind === "연구이월" || it.kind === "지원이월");
+        const carryHS = carryRow.reduce((s, it) => s + Number(it.hSupport || 0) + (it.kind === "지원이월" ? Number(it.hExplain || 0) : 0), 0);
+        const carryHR = carryRow.reduce((s, it) => s + Number(it.hResearch || 0) + (it.kind === "연구이월" ? Number(it.hExplain || 0) : 0), 0);
 
+        // 실 활동 항목 = 이월 보전 row 제외
         const realItems = w.items.filter((it) => it.kind !== "연구이월" && it.kind !== "지원이월");
-        const hE = realItems.reduce((s, it) => s + Number(it.hExplain || 0), 0);
-        const remainCap = Math.max(0, cap - hE);
+        // 관리자가 '이월 표시'한 활동은 당월 장부에서 빠짐
+        const cutItemsRaw = realItems.filter((it) => isTrue(it.carry));
+        const activeItems = realItems.filter((it) => !isTrue(it.carry));
 
-        const otherItems = realItems
-          .filter((it) => (Number(it.hSupport || 0) + Number(it.hResearch || 0)) > 0)
-          .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+        const hE = activeItems.reduce((s, it) => s + Number(it.hExplain || 0), 0);
+        const hS = activeItems.reduce((s, it) => s + Number(it.hSupport || 0), 0);
+        const hR = activeItems.reduce((s, it) => s + Number(it.hResearch || 0), 0);
 
-        let usedCap = 0;
-        let acceptedS = 0, acceptedR = 0;
-        const cutItems = [];
-
-        otherItems.forEach((it) => {
-          const itHS = Number(it.hSupport || 0);
-          const itHR = Number(it.hResearch || 0);
-          const itTotal = itHS + itHR;
-          if (itTotal === 0) return;
-
-          if (usedCap >= remainCap) {
-            cutItems.push({
-              date: it.date, kind: it.kind, form: it.form || "", role: it.role || "",
-              cutHSupport: itHS, cutHResearch: itHR, cutTotal: itTotal,
-            });
-          } else if (usedCap + itTotal <= remainCap) {
-            acceptedS += itHS;
-            acceptedR += itHR;
-            usedCap += itTotal;
-          } else {
-            const available = remainCap - usedCap;
-            const ratio = available / itTotal;
-            const acceptHS = Math.round(itHS * ratio * 10) / 10;
-            const acceptHR = Math.round(itHR * ratio * 10) / 10;
-            acceptedS += acceptHS;
-            acceptedR += acceptHR;
-            const cutHS = Math.round((itHS - acceptHS) * 10) / 10;
-            const cutHR = Math.round((itHR - acceptHR) * 10) / 10;
-            cutItems.push({
-              date: it.date, kind: it.kind, form: it.form || "", role: it.role || "",
-              cutHSupport: cutHS, cutHResearch: cutHR, cutTotal: cutHS + cutHR,
-            });
-            usedCap = remainCap;
-          }
-        });
-
-        const cutSupport = Math.round(cutItems.reduce((s, it) => s + (it.cutHSupport || 0), 0) * 10) / 10;
+        const cutItems = cutItemsRaw.map((it) => ({
+          date: it.date, kind: it.kind, form: it.form || "", role: it.role || "",
+          cutHExplain: Number(it.hExplain || 0),
+          cutHSupport: Number(it.hSupport || 0),
+          cutHResearch: Number(it.hResearch || 0),
+          cutTotal: Number(it.hExplain || 0) + Number(it.hSupport || 0) + Number(it.hResearch || 0),
+        }));
+        const cutExplain  = Math.round(cutItems.reduce((s, it) => s + (it.cutHExplain || 0), 0) * 10) / 10;
+        const cutSupport  = Math.round(cutItems.reduce((s, it) => s + (it.cutHSupport || 0), 0) * 10) / 10;
         const cutResearch = Math.round(cutItems.reduce((s, it) => s + (it.cutHResearch || 0), 0) * 10) / 10;
 
         const finalHE = hE;
-        const finalHS = acceptedS + carryHS;
-        const finalHR = acceptedR + carryHR;
+        const finalHS = hS + carryHS;
+        const finalHR = hR + carryHR;
         const total = finalHE + finalHS + finalHR;
 
         wkRows.push({
@@ -153,8 +126,8 @@ window.Ledger = {
           cutItems,
           cutSupport,
           cutResearch,
-          // 호환용 — 잘린 총 시수 (연구+지원). 기존 cutExplain 자리에 대체 사용
-          cutExplain: cutSupport + cutResearch,
+          // 호환용 — 잘린 총 시수 (해설+연구+지원 모두 포함)
+          cutExplain: cutExplain + cutSupport + cutResearch,
           cap,
         });
         totalE += finalHE;

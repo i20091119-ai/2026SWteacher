@@ -449,6 +449,12 @@ button:disabled, .btn:disabled {
 .cal-cell .slot.kind-지원   { background: #fed7aa; color: #9a3412; }
 .cal-cell .slot.kind-연구이월 { background: #e2e8f0; color: var(--ink-2); border: 1px dashed var(--border-strong); }
 .cal-cell .slot.kind-지원이월 { background: #fde2e2; color: #9a3412; border: 1px dashed #fca5a5; }
+.cal-cell .slot.carry-flag {
+  border: 1px dashed var(--amber);
+  background: var(--amber-soft);
+  color: #9a3412;
+  font-weight: 600;
+}
 
 .cal-cell .add {
   margin-top: auto;

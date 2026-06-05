@@ -27,7 +27,7 @@ const HEADERS = {
   instructors: ["name", "order"],
   unavail: ["name", "date", "reason"],
   submit: ["ym", "name", "submitted", "submittedAt"],
-  schedule: ["id", "date", "kind", "form", "role", "name", "hExplain", "hSupport", "hResearch", "memo"],
+  schedule: ["id", "date", "kind", "form", "role", "name", "hExplain", "hSupport", "hResearch", "memo", "carry"],
   seed: ["ym", "kind", "pointer", "lockedAt"],
   settings: ["key", "value"],
   carryover: ["srcYm", "name", "overflowExplainH", "compensationAmount", "recommendedH", "status", "note"],
@@ -378,6 +378,7 @@ function getMonth(ym) {
     hSupport: Number(r.hSupport || 0),
     hResearch: Number(r.hResearch || 0),
     memo: String(r.memo || ""),
+    carry: isTrue(r.carry),
   });
   const assignments = allSchedule.filter((r) => inMonth(toDateStr(r.date))).map(mapAssign);
   const prevAssignments = allSchedule.filter((r) => inPrev(toDateStr(r.date))).map(mapAssign);
@@ -479,19 +480,20 @@ function saveAssignment(a) {
   const sh = getSheet(TABS.schedule, HEADERS.schedule);
   const headers = HEADERS.schedule;
   const rows = readAll(sh);
+  const carry = isTrue(a.carry);
   if (a.id) {
     const idx = rows.findIndex((r) => String(r.id) === String(a.id));
     if (idx === -1) throw new Error("배치를 찾을 수 없습니다: " + a.id);
     sh.getRange(rows[idx].__row, 1, 1, headers.length).setValues([[
       a.id, a.date, a.kind, a.form || "", a.role || "", a.name,
-      a.hExplain || 0, a.hSupport || 0, a.hResearch || 0, a.memo || "",
+      a.hExplain || 0, a.hSupport || 0, a.hResearch || 0, a.memo || "", carry,
     ]]);
     invalidateTab(TABS.schedule);
     return { id: a.id };
   } else {
     const id = Utilities.getUuid();
     sh.appendRow([id, a.date, a.kind, a.form || "", a.role || "", a.name,
-      a.hExplain || 0, a.hSupport || 0, a.hResearch || 0, a.memo || ""]);
+      a.hExplain || 0, a.hSupport || 0, a.hResearch || 0, a.memo || "", carry]);
     invalidateTab(TABS.schedule);
     return { id };
   }
@@ -506,7 +508,7 @@ function saveAssignmentsBatch(assignments) {
     ids.push(id);
     return [
       id, a.date, a.kind, a.form || "", a.role || "", a.name,
-      a.hExplain || 0, a.hSupport || 0, a.hResearch || 0, a.memo || "",
+      a.hExplain || 0, a.hSupport || 0, a.hResearch || 0, a.memo || "", isTrue(a.carry),
     ];
   });
   sh.getRange(sh.getLastRow() + 1, 1, rows.length, HEADERS.schedule.length).setValues(rows);

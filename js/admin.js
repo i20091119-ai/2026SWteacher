@@ -262,8 +262,10 @@ window.Admin = {
     const unavByDate = {};
     (data.unavails || []).forEach((u) => { (unavByDate[u.date] ||= []).push(u); });
     const programs = data.programs || [];
-    // 캘린더는 항상 모든 배치를 보여줌 (이월 항목도 점선 박스로 시각 구분됨)
-    const visibleKinds = null;
+    // 실제 뷰: 모든 배치 표시. 장부 뷰: carry=true(이월 표시) 제외
+    const visibleKinds = Admin.view === "ledger"
+      ? (a) => !isTrue(a.carry)
+      : null;
     const grid = Cal.buildGrid(ym, {
       holidays,
       renderDay: (ds, cell) => {
@@ -292,10 +294,14 @@ window.Admin = {
         if (filterName) items = items.filter((a) => a.name === filterName);
         items.forEach((a) => {
           const s = document.createElement("div");
-          s.className = `slot kind-${a.kind.replace(/[()]/g, "")}`;
+          let cls = `slot kind-${a.kind.replace(/[()]/g, "")}`;
+          if (isTrue(a.carry)) cls += " carry-flag";
+          s.className = cls;
           s.dataset.stop = "1";
           const h = Number(a.hExplain || 0) + Number(a.hSupport || 0) + Number(a.hResearch || 0);
-          s.innerHTML = `${Admin.labelOf(a)} · ${nameLabel(a.name)} (${h}h)`;
+          const prefix = isTrue(a.carry) ? "↻ " : "";
+          s.innerHTML = `${prefix}${Admin.labelOf(a)} · ${nameLabel(a.name)} (${h}h)`;
+          if (isTrue(a.carry)) s.title = "다음 달로 이월 표시된 활동 (당월 장부에서 제외)";
           s.onclick = () => Admin.openModal(a);
           cell.appendChild(s);
         });
@@ -429,6 +435,10 @@ window.Admin = {
       ${namesHtml}
       <p class="muted" style="margin-top:8px">형태 선택 시 표준 시수가 자동으로 채워집니다(연구·지원 유형은 직접 입력).</p>
       <label>메모 <input type="text" id="m_memo" value="${a.memo || ""}" style="width:100%"/></label>
+      <label class="checkbox-inline" style="display:flex;align-items:center;gap:8px;margin-top:10px;padding:10px 12px;background:var(--amber-soft);border:1px solid #fde68a;border-radius:8px;cursor:pointer">
+        <input type="checkbox" id="m_carry" ${isTrue(a.carry) ? "checked" : ""} />
+        <span><b>↻ 이월 표시</b> — 이 활동을 다음 달로 이월 (당월 장부/금액에서 제외)</span>
+      </label>
       ${isEdit ? '<p><button type="button" id="m_del" style="color:#c53030">삭제</button></p>' : ""}
     `;
     // form/kind/role 변경 시 표준 시수 자동 적용
@@ -448,6 +458,7 @@ window.Admin = {
         hSupport: Number(document.getElementById("m_hS").value || 0),
         hResearch: Number(document.getElementById("m_hR").value || 0),
         memo: document.getElementById("m_memo").value,
+        carry: document.getElementById("m_carry").checked,
       };
       if (!common.date || !common.kind) { alert("날짜·유형은 필수입니다."); return; }
       try {

@@ -69,6 +69,13 @@ window.sortKo = function (arr) {
   return arr.slice().sort((a, b) => a.localeCompare(b, "ko"));
 };
 
+// Boolean 안전 변환 (Google Sheets의 "TRUE"/"FALSE" 문자열도 처리)
+window.isTrue = function (v) {
+  if (v === true) return true;
+  const s = String(v == null ? "" : v).trim().toLowerCase();
+  return s === "true" || s === "1" || s === "y" || s === "yes";
+};
+
 // 강사 이름 HTML — 파견교사(이상우)는 주황색 강조
 window.nameLabel = function (name) {
   const n = String(name == null ? "" : name);
