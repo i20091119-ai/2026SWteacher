@@ -211,18 +211,45 @@ window.Instructor = {
   renderSchedule(ym, data) {
     const wrap = document.getElementById("insSchedule");
     wrap.innerHTML = "";
-    if (!data.published) { wrap.innerHTML = '<div class="muted">아직 확정 공개 전입니다.</div>'; return; }
-    const tbl = document.createElement("table");
-    tbl.innerHTML = "<thead><tr><th>날짜</th><th>유형</th><th>형태</th><th>역할</th><th>강사</th><th>시수</th></tr></thead>";
-    const tb = document.createElement("tbody");
-    (data.assignments || []).slice().sort((a, b) => a.date.localeCompare(b.date)).forEach((a) => {
-      const tr = document.createElement("tr");
-      const h = Number(a.hExplain || 0) + Number(a.hSupport || 0) + Number(a.hResearch || 0);
-      tr.innerHTML = `<td>${a.date}</td><td>${a.kind}</td><td>${a.form || "-"}</td><td>${a.role || "-"}</td><td>${nameLabel(a.name)}</td><td>${h}</td>`;
-      tb.appendChild(tr);
+    if (!data.published) {
+      wrap.innerHTML = '<div class="muted">아직 확정 공개 전입니다.</div>';
+      return;
+    }
+    const me = STATE.user.name;
+    const holidays = new Set((data.holidays || []));
+    const programs = data.programs || [];
+    const grid = Cal.buildGrid(ym, {
+      holidays,
+      renderDay: (ds, cell) => {
+        // 학생 프로그램
+        programs.filter((p) => ds >= p.dateStart && ds <= p.dateEnd).forEach((p) => {
+          const div = document.createElement("div");
+          const cls = p.session === "오후" ? "pm" : p.session === "오전" ? "am" : "none";
+          div.className = "program program-" + cls;
+          const parts = [];
+          if (p.session) parts.push(p.session);
+          parts.push(p.school);
+          if (p.students > 0) parts.push(p.students + "명");
+          div.textContent = parts.join(" ");
+          div.title = `${p.dateStart}${p.dateStart !== p.dateEnd ? "~" + p.dateEnd : ""} ${parts.join(" ")}${p.note ? " · " + p.note : ""}`;
+          cell.appendChild(div);
+        });
+        // 모든 강사 배치 (본인은 파랑 outline 강조)
+        (data.assignments || []).filter((a) => a.date === ds).forEach((a) => {
+          const s = document.createElement("div");
+          let cls = `slot kind-${a.kind}`;
+          if (a.name === me) cls += " mine";
+          if (isTrue(a.carry)) cls += " carry-flag";
+          s.className = cls;
+          const h = Number(a.hExplain || 0) + Number(a.hSupport || 0) + Number(a.hResearch || 0);
+          const prefix = isTrue(a.carry) ? "↻ " : "";
+          s.innerHTML = `${prefix}${Instructor.labelOf(a)} · ${nameLabel(a.name)} (${h}h)`;
+          if (isTrue(a.carry)) s.title = "다음 달로 이월 표시된 활동";
+          cell.appendChild(s);
+        });
+      },
     });
-    tbl.appendChild(tb);
-    wrap.appendChild(tbl);
+    wrap.appendChild(grid);
   },
   labelOf(a) {
     if (a.form && a.role) return `${a.kind}·${a.form}·${a.role}`;

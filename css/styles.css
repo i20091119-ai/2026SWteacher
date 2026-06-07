@@ -455,6 +455,11 @@ button:disabled, .btn:disabled {
   color: #9a3412;
   font-weight: 600;
 }
+.cal-cell .slot.mine {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+  font-weight: 700;
+}
 
 .cal-cell .add {
   margin-top: auto;
