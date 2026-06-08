@@ -40,6 +40,7 @@ window.Instructor = {
     Instructor.renderCalendar(ym, data);
     Instructor.renderUnavailList(data);
     Instructor.renderSubmitState(data);
+    Instructor.renderMyWeekly(ym, data);
     Instructor.renderSchedule(ym, data);
     Instructor.renderSwaps(ym, data);
     Instructor.renderMyCarryover(ym, data);
@@ -347,6 +348,54 @@ window.Instructor = {
       await fn(swapId);
       await Instructor.loadMonth();
     } catch (e) { alert("실패: " + e.message); }
+  },
+
+  renderMyWeekly(ym, data) {
+    const wrap = document.getElementById("insMyWeekly");
+    if (!wrap) return;
+    const me = STATE.user.name;
+    const myAssignments = (data.assignments || []).filter((a) => a.name === me);
+    const cap = Ledger.capForYm(ym);
+    if (!myAssignments.length) {
+      wrap.innerHTML = `<div class="muted">${ym}에 배치된 내 활동이 없습니다. (주간 상한 ${cap}h)</div>`;
+      return;
+    }
+    // 본인 데이터만으로 actualView 계산 (이월 항목도 합계에 포함되어 14h 점검 기준)
+    const viewMap = Ledger.actualView(ym, myAssignments);
+    const view = viewMap[me] || [];
+    const fmt = (n) => {
+      const r = Math.round(Number(n || 0) * 10) / 10;
+      return r % 1 === 0 ? r : r.toFixed(1);
+    };
+    let html = `<p class="muted" style="margin-bottom:8px">주간 상한: <b>${cap}h</b></p>`;
+    html += `<table><thead><tr>
+      <th>주 시작(일)</th><th>해설</th><th>지원</th><th>연구</th>
+      <th>이월(연)</th><th>이월(지)</th><th>합계</th><th>초과</th>
+    </tr></thead><tbody>`;
+    let tE = 0, tS = 0, tR = 0, tCR = 0, tCS = 0;
+    view.forEach((w) => {
+      const tag = w.over > 0 ? "warn" : "";
+      tE += w.hExplain; tS += w.hSupport; tR += w.hResearch;
+      tCR += (w.carryResearch || 0); tCS += (w.carrySupport || 0);
+      html += `<tr class="${tag}">
+        <td>${w.wkStart}</td>
+        <td>${fmt(w.hExplain)}</td>
+        <td>${fmt(w.hSupport)}</td>
+        <td>${fmt(w.hResearch)}</td>
+        <td>${fmt(w.carryResearch)}</td>
+        <td>${fmt(w.carrySupport)}</td>
+        <td><b>${fmt(w.total)}</b></td>
+        <td>${w.over > 0 ? `<b>${fmt(w.over)}h</b>` : "—"}</td>
+      </tr>`;
+    });
+    html += `</tbody></table>`;
+    const monthTotal = tE + tS + tR + tCR + tCS;
+    html += `<p style="margin-top:10px;font-size:14px">
+      <b>${ym} 월 합계</b> · 해설 ${fmt(tE)}h · 지원 ${fmt(tS)}h · 연구 ${fmt(tR)}h
+      ${tCR > 0 ? `· 이월(연) ${fmt(tCR)}h` : ""}${tCS > 0 ? ` · 이월(지) ${fmt(tCS)}h` : ""}
+      · <b>총 ${fmt(monthTotal)}h</b>
+    </p>`;
+    wrap.innerHTML = html;
   },
 
   renderMyCarryover(ym, data) {
