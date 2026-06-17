@@ -90,6 +90,17 @@
       <button id="admPrintBtn" type="button">장부 인쇄/내보내기</button>
     </div>
 
+    <div class="card" id="admInstructors">
+      <h2>강사 관리</h2>
+      <ul id="admInsList"></ul>
+      <div class="reason-row">
+        <input type="text" id="admInsName" placeholder="새 강사 이름" />
+        <button type="button" id="admInsAdd">추가</button>
+        <button type="button" id="admRefresh">데이터 새로고침</button>
+      </div>
+      <div class="muted">가나다순 자동 정렬. 추가/삭제 시 시트의 <code>강사</code> 탭에도 즉시 반영됩니다.</div>
+    </div>
+
     <div class="card" id="admSubmitStatus">
       <h2>근무불가일 제출 현황</h2>
       <table id="submitTable"></table>

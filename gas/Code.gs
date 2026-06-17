@@ -120,6 +120,14 @@ function dispatch(action, p, ctx) {
       if (ctx.role !== "admin") throw new Error("관리자 인증 필요");
       return withLock(() => setSetting(p.key, p.value));
     }
+    case "addInstructor": {
+      if (ctx.role !== "admin") throw new Error("관리자 인증 필요");
+      return withLock(() => addInstructor(p.name));
+    }
+    case "removeInstructor": {
+      if (ctx.role !== "admin") throw new Error("관리자 인증 필요");
+      return withLock(() => removeInstructor(p.name));
+    }
     default: throw new Error("알 수 없는 action: " + action);
   }
 }
@@ -348,6 +356,26 @@ function setSeed(ym, kind, pointer) {
   const now = new Date().toISOString();
   if (idx === -1) sh.appendRow([ym, kind, pointer, now]);
   else sh.getRange(rows[idx].__row, 1, 1, 4).setValues([[ym, kind, pointer, now]]);
+  return { ok: true };
+}
+
+function addInstructor(name) {
+  name = String(name || "").trim();
+  if (!name) throw new Error("이름이 비어있습니다");
+  const sh = getSheet(TABS.instructors);
+  const rows = readAll(sh);
+  if (rows.some((r) => String(r.name).trim() === name)) throw new Error("이미 등록된 강사: " + name);
+  sh.appendRow([name, rows.length + 1]);
+  return { name };
+}
+
+function removeInstructor(name) {
+  name = String(name || "").trim();
+  const sh = getSheet(TABS.instructors);
+  const rows = readAll(sh);
+  const idx = rows.findIndex((r) => String(r.name).trim() === name);
+  if (idx === -1) throw new Error("강사를 찾을 수 없습니다: " + name);
+  sh.deleteRow(rows[idx].__row);
   return { ok: true };
 }
 

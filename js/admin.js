@@ -17,7 +17,65 @@ window.Admin = {
     });
     document.getElementById("admPrintBtn").onclick = () => window.print();
     document.getElementById("admFilter").onchange = () => Admin.renderViews();
+    Admin.renderInstructorsCard();
+    document.getElementById("admInsAdd").onclick = Admin.addInstructor;
+    document.getElementById("admInsName").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") Admin.addInstructor();
+    });
+    document.getElementById("admRefresh").onclick = Admin.refreshAll;
     await Admin.loadMonth();
+  },
+
+  renderInstructorsCard() {
+    const ul = document.getElementById("admInsList");
+    ul.innerHTML = "";
+    STATE.instructors.forEach((n) => {
+      const li = document.createElement("li");
+      li.innerHTML = `<span>${n}</span>`;
+      const btn = document.createElement("button");
+      btn.type = "button"; btn.textContent = "삭제";
+      btn.onclick = () => Admin.removeInstructor(n);
+      li.appendChild(btn);
+      ul.appendChild(li);
+    });
+    if (!STATE.instructors.length) {
+      ul.innerHTML = '<li><span class="muted">등록된 강사가 없습니다.</span></li>';
+    }
+  },
+
+  async addInstructor() {
+    const input = document.getElementById("admInsName");
+    const name = (input.value || "").trim();
+    if (!name) { alert("이름을 입력하세요."); return; }
+    try {
+      await API.addInstructor(name);
+      input.value = "";
+      await Admin.refreshAll();
+    } catch (e) { alert("추가 실패: " + e.message); }
+  },
+
+  async removeInstructor(name) {
+    if (!confirm(`'${name}' 강사를 삭제하시겠습니까?\n기존 배치/불가일 데이터는 시트에 그대로 남습니다.`)) return;
+    try {
+      await API.removeInstructor(name);
+      await Admin.refreshAll();
+    } catch (e) { alert("삭제 실패: " + e.message); }
+  },
+
+  async refreshAll() {
+    setStatus("loading", "강사 명단 다시 불러오는 중...");
+    try {
+      const boot = await API.bootstrap();
+      STATE.instructors = sortKo(boot.instructors || []);
+      STATE.settings = boot.settings || {};
+      Ledger.syncRates();
+      Auth.renderInstructorButtons(STATE.instructors);
+      Admin.renderInstructorsCard();
+      setStatus("ok", `정상 · 강사 ${STATE.instructors.length}명`);
+      await Admin.loadMonth();
+    } catch (e) {
+      setStatus("err", "새로고침 실패: " + e.message);
+    }
   },
 
   async loadMonth() {

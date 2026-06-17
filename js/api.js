@@ -33,4 +33,6 @@ window.API = {
   deleteAssignment: (id) => api("deleteAssignment", { id }),
   setSeed: (ym, kind, pointer) => api("setSeed", { ym, kind, pointer }),
   setSetting: (key, value) => api("setSetting", { key, value }),
+  addInstructor: (name) => api("addInstructor", { name }),
+  removeInstructor: (name) => api("removeInstructor", { name }),
 };
