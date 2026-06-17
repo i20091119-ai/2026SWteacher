@@ -177,7 +177,7 @@ function seedDefaultsIfEmpty() {
   const ins = readAll(getSheet(TABS.instructors));
   if (!ins.length) {
     const sh = getSheet(TABS.instructors);
-    ["김경화", "신미정", "이경향", "이윤미"].forEach((n, i) => sh.appendRow([n, i + 1]));
+    ["김경화", "신미정", "이경향", "이수원", "이윤미"].forEach((n, i) => sh.appendRow([n, i + 1]));
   }
   const settings = readSettings();
   const setDefault = (k, v) => { if (settings[k] === undefined) setSetting(k, v); };
