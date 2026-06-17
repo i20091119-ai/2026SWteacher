@@ -1,6 +1,6 @@
 // 순번 추천 (자동 배치 없음). 가족체험은 슬라이딩, 주말어드벤처는 시간대 묶음 단순 순환.
 // 입력:
-//   instructors: 가나다순 4명 배열
+//   instructors: 가나다순 강사 배열 (N명, 현재 5명)
 //   currentSeedPointer: 해당 월 시작 포인터 (0~3)
 //   month assignments: 이미 배치된 일정 (불가일 양보 계산용)
 //   unavails: {name -> Set of YYYY-MM-DD}

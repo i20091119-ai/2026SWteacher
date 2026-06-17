@@ -58,7 +58,7 @@ window.App = {
       Auth.renderInstructorButtons(STATE.instructors);
       Ledger.syncRates();
       if (!STATE.instructors.length) {
-        setStatus("err", "강사 명단이 비어있습니다. 시트 `강사` 탭에 4명이 자동 시드되지 않은 상태입니다.");
+        setStatus("err", "강사 명단이 비어있습니다. 시트 `강사` 탭에 5명이 자동 시드되지 않은 상태입니다.");
         document.getElementById("retryBtn").classList.remove("hidden");
       } else {
         setStatus("ok", `정상 · 강사 ${STATE.instructors.length}명 로드됨`);
