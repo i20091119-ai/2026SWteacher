@@ -25,6 +25,13 @@ body { min-height: 100vh; }
 .who { display: flex; gap: 12px; align-items: center; }
 .who button { background: #fff; color: var(--accent-2); border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; }
 .hidden { display: none !important; }
+.statusbar { padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; display: flex; gap: 12px; align-items: center; font-size: 14px; }
+.statusbar.loading { background: #fff7e6; border: 1px solid #f5c177; }
+.statusbar.ok { background: #e7f5ec; border: 1px solid #87c39e; }
+.statusbar.err { background: var(--warn-bg); border: 1px solid #f1a1a1; color: var(--warn); }
+.statusbar button { margin-left: auto; padding: 4px 10px; border: 1px solid var(--line); background: #fff; border-radius: 6px; cursor: pointer; font-size: 12px; }
+.statusbar #diagBtn { margin-left: 8px; }
+#diagPanel { background: #1b2230; color: #eaeaea; padding: 12px; border-radius: 8px; max-height: 280px; overflow: auto; white-space: pre-wrap; font-size: 12px; margin-bottom: 16px; }
 main#app { padding: 20px; max-width: 1280px; margin: 0 auto; }
 h1 { margin: 0 0 16px 0; font-size: 22px; }
 h2 { margin: 0 0 12px 0; font-size: 17px; }

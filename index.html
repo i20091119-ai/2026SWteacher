@@ -13,6 +13,13 @@
 </header>
 
 <main id="app">
+  <!-- 상태/진단 배너 -->
+  <div id="statusBar" class="statusbar">
+    <span id="statusText">초기화 중...</span>
+    <button type="button" id="retryBtn" class="hidden">재시도</button>
+    <button type="button" id="diagBtn">진단 정보</button>
+  </div>
+  <pre id="diagPanel" class="hidden"></pre>
   <!-- 로그인 -->
   <section id="page-login" class="page">
     <h1>로그인</h1>
