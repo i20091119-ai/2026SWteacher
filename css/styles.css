@@ -460,6 +460,38 @@ button:disabled, .btn:disabled {
   outline-offset: -1px;
   font-weight: 700;
 }
+.carry-badge {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  margin-right: 2px;
+  vertical-align: 1px;
+}
+.carry-badge.carry-in {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fbbf24;
+}
+.carry-badge.carry-out {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #f87171;
+}
+.cal-cell .slot-memo {
+  display: block;
+  font-size: 10px;
+  font-style: italic;
+  font-weight: 400;
+  color: var(--muted);
+  margin-top: 3px;
+  padding-top: 3px;
+  border-top: 1px dashed rgba(0,0,0,0.12);
+  word-break: break-word;
+  line-height: 1.3;
+}
 
 .cal-cell .add {
   margin-top: auto;

@@ -243,9 +243,30 @@ window.Instructor = {
           if (isTrue(a.carry)) cls += " carry-flag";
           s.className = cls;
           const h = Number(a.hExplain || 0) + Number(a.hSupport || 0) + Number(a.hResearch || 0);
-          const prefix = isTrue(a.carry) ? "↻ " : "";
-          s.innerHTML = `${prefix}${Instructor.labelOf(a)} · ${nameLabel(a.name)} (${h}h)`;
-          if (isTrue(a.carry)) s.title = "다음 달로 이월 표시된 활동";
+
+          const isCarryKind = (a.kind === "연구이월" || a.kind === "지원이월");
+          const isCarryMarked = isTrue(a.carry);
+          let badge = "";
+          let labelKindShort = a.kind;
+          if (isCarryKind) {
+            badge = '<span class="carry-badge carry-in">⇩ 이월</span> ';
+            labelKindShort = a.kind.replace("이월", "");
+          } else if (isCarryMarked) {
+            badge = '<span class="carry-badge carry-out">↻ 다음달이월</span> ';
+          }
+          const label = labelKindShort + (a.form ? "·" + a.form : "") + (a.role ? "·" + a.role : "");
+          s.innerHTML = `${badge}${label} · ${nameLabel(a.name)} (${h}h)`;
+          if (a.memo && String(a.memo).trim()) {
+            const m = document.createElement("div");
+            m.className = "slot-memo";
+            m.textContent = "📝 " + a.memo;
+            s.appendChild(m);
+          }
+          const tips = [];
+          if (isCarryKind) tips.push("전월에서 이월된 보전 활동");
+          if (isCarryMarked) tips.push("다음 달로 이월 표시된 활동");
+          if (a.memo) tips.push("비고: " + a.memo);
+          if (tips.length) s.title = tips.join("\n");
           cell.appendChild(s);
         });
       },
