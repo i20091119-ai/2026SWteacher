@@ -1,13 +1,13 @@
 // 실제 활동 뷰 / 장부 뷰 계산
 window.Ledger = {
-  CAP: 14,
+  CAP: 20,
   rateExplain: 30000,
   rateOther: 20000,
 
   // settings에서 단가/상한 동기화 (기본값)
   syncRates() {
     const s = STATE.settings || {};
-    Ledger.CAP = Number(s["weeklyCap"] || 14);
+    Ledger.CAP = Number(s["weeklyCap"] || 20);
     Ledger.rateExplain = Number(s["rate.explain"] || 30000);
     Ledger.rateOther = Number(s["rate.other"] || 20000);
   },
@@ -17,7 +17,7 @@ window.Ledger = {
     const s = STATE.settings || {};
     const m = Number(s["weeklyCap." + ym]);
     if (m > 0) return m;
-    return Number(s["weeklyCap"] || 14);
+    return Number(s["weeklyCap"] || 20);
   },
 
   // 주(일~토) 단위로 강사별 시수/항목 그룹화

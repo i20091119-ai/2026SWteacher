@@ -381,7 +381,7 @@ window.Instructor = {
       wrap.innerHTML = `<div class="muted">${ym}에 배치된 내 활동이 없습니다. (주간 상한 ${cap}h)</div>`;
       return;
     }
-    // 본인 데이터만으로 actualView 계산 (이월 항목도 합계에 포함되어 14h 점검 기준)
+    // 본인 데이터만으로 actualView 계산 (이월 항목도 합계에 포함되어 20h 점검 기준)
     const viewMap = Ledger.actualView(ym, myAssignments);
     const view = viewMap[me] || [];
     const fmt = (n) => {

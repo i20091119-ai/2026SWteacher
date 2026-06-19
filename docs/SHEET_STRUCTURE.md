@@ -54,7 +54,7 @@
 |---|---|
 | rate.explain | 30000 |
 | rate.other | 20000 |
-| weeklyCap | 14 |
+| weeklyCap | 20 |
 | admin.whitelist | i20091119@gmail.com |
 | holiday.2026-06-06 | 1 |
 | publish.2026-06 | 1 |
