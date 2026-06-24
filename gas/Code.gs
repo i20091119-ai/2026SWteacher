@@ -300,7 +300,7 @@ function seedDefaultsIfEmpty() {
   const insSh = getSheet(TABS.instructors, HEADERS.instructors);
   const ins = readAll(insSh);
   if (!ins.length) {
-    const rows = ["김경화", "신미정", "이경향", "이윤미"].map((n, i) => [n, i + 1]);
+    const rows = ["김경화", "신미정", "이경향", "이수원", "이윤미", "현수진"].map((n, i) => [n, i + 1]);
     insSh.getRange(insSh.getLastRow() + 1, 1, rows.length, 2).setValues(rows);
   }
   // ★ readSettings() 직접 호출 금지 (ensureTabs → seedDefaultsIfEmpty → readSettings → ensureTabs 무한 재귀).
