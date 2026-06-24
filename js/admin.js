@@ -203,13 +203,17 @@ window.Admin = {
   renderNextUp(ym, data) {
     const target = document.getElementById("admNextUp");
     const ins = STATE.instructors;
-    // 시드 포인터: seeds[kind] (0~3)
+    const maxP = Math.max(0, ins.length - 1);
+    // 시드 포인터: seeds[kind]
     const seedFamily = (data.seeds || []).find((s) => s.ym === ym && s.kind === "가족체험");
     const seedWeekend = (data.seeds || []).find((s) => s.ym === ym && s.kind === "주말어드벤처");
+    const seedSchool = (data.seeds || []).find((s) => s.ym === ym && s.kind === "학교체험");
     const sF = seedFamily ? Number(seedFamily.pointer) : 0;
     const sW = seedWeekend ? Number(seedWeekend.pointer) : 0;
+    const sS = seedSchool ? Number(seedSchool.pointer) : 0;
     const fam = Rotation.nextFamily(ym, ins, sF, data.assignments || [], {});
     const wk = Rotation.nextWeekend(ym, ins, sW, data.assignments || []);
+    const sch = Rotation.nextSchool(ym, ins, sS, data.assignments || []);
     target.innerHTML = `
       <div class="grid-2">
         <div>
@@ -218,7 +222,7 @@ window.Admin = {
           보조강사: <b>${nameLabel(fam.sub)}</b><br>
           <span class="muted">현재 ${ym} 가족체험 편성 회차: ${fam.placedCount} · 다음 회차 후 포인터: ${fam.nextPointerAfter}</span></p>
           <label>가족체험 시작 포인터(이 달):
-            <input type="number" min="0" max="3" value="${sF}" id="seedFamily" />
+            <input type="number" min="0" max="${maxP}" value="${sF}" id="seedFamily" />
           </label>
           <button type="button" id="seedFamilySave">저장</button>
         </div>
@@ -227,12 +231,22 @@ window.Admin = {
           <ul>${wk.slots.map((s) => `<li>${s.role}: <b>${nameLabel(s.name)}</b></li>`).join("")}</ul>
           <span class="muted">현재 ${ym} 주말어드벤처 편성 묶음: ${wk.placedBundles} · 묶음 후 포인터: ${wk.nextPointerAfter}</span><br>
           <label>주말어드벤처 시작 포인터(이 달):
-            <input type="number" min="0" max="3" value="${sW}" id="seedWeekend" />
+            <input type="number" min="0" max="${maxP}" value="${sW}" id="seedWeekend" />
           </label>
           <button type="button" id="seedWeekendSave">저장</button>
         </div>
+        <div>
+          <h3>학교체험SW · 다음 회차 (${ins.length - 2}/${ins.length}명 참여)</h3>
+          <p>참여 (${sch.participate.length}명): ${sch.participate.map((n) => `<b>${nameLabel(n)}</b>`).join(" · ")}<br>
+          휴식 (${sch.rest.length}명): <span class="muted">${sch.rest.map((n) => nameLabel(n)).join(" · ")}</span><br>
+          <span class="muted">현재 ${ym} 학교체험 편성 회차: ${sch.placedSessions} · 회차 후 포인터: ${sch.nextPointerAfter}</span></p>
+          <label>학교체험 시작 포인터(이 달):
+            <input type="number" min="0" max="${maxP}" value="${sS}" id="seedSchool" />
+          </label>
+          <button type="button" id="seedSchoolSave">저장</button>
+        </div>
       </div>
-      <p class="muted">자동 배치는 하지 않습니다. 캘린더에서 직접 배치하세요.</p>
+      <p class="muted">자동 배치는 하지 않습니다. 캘린더에서 직접 배치하세요. 학교체험은 6명 중 4명 참여 + 매 회차 2명이 돌아가며 휴식 (포인터 +2).</p>
     `;
     document.getElementById("seedFamilySave").onclick = async () => {
       const v = Number(document.getElementById("seedFamily").value);
@@ -242,6 +256,11 @@ window.Admin = {
     document.getElementById("seedWeekendSave").onclick = async () => {
       const v = Number(document.getElementById("seedWeekend").value);
       await API.setSeed(ym, "주말어드벤처", v);
+      await Admin.loadMonth();
+    };
+    document.getElementById("seedSchoolSave").onclick = async () => {
+      const v = Number(document.getElementById("seedSchool").value);
+      await API.setSeed(ym, "학교체험", v);
       await Admin.loadMonth();
     };
   },

@@ -1,7 +1,8 @@
-// 순번 추천 (자동 배치 없음). 가족체험은 슬라이딩, 주말어드벤처는 시간대 묶음 단순 순환.
+// 순번 추천 (자동 배치 없음). 가족체험은 슬라이딩, 주말어드벤처는 시간대 묶음 단순 순환,
+// 학교체험은 6명 중 4명 참여 + 매 회차 2명 쉬는 슬라이딩(+2).
 // 입력:
-//   instructors: 가나다순 4명 배열
-//   currentSeedPointer: 해당 월 시작 포인터 (0~3)
+//   instructors: 가나다순 N명 배열 (현재 6명)
+//   currentSeedPointer: 해당 월 시작 포인터 (0~N-1)
 //   month assignments: 이미 배치된 일정 (불가일 양보 계산용)
 //   unavails: {name -> Set of YYYY-MM-DD}
 window.Rotation = {
@@ -38,6 +39,29 @@ window.Rotation = {
       slots: slots.map((s, i) => ({ role: s, name: ins[(start + i) % ins.length] })),
       placedBundles,
       nextPointerAfter: (start + slots.length) % ins.length,
+    };
+  },
+  // 학교체험SW: 6명 중 4명 참여, 매 회차 2명이 돌아가며 휴식. 포인터 +2씩 이동.
+  //   rest = [ins[p], ins[(p+1) % N]]
+  //   participate = 나머지 4명
+  //   회차당 p += 2 (mod N). N이 6이면 3회차마다 패턴 반복.
+  // 회차 수 카운트는 (날짜, kind=해설, form=학교체험)인 배치 중 unique 날짜 수.
+  nextSchool(ym, ins, seedP, monthAssignments) {
+    const dates = new Set();
+    monthAssignments.forEach((a) => {
+      if (a.kind === "해설" && a.form === "학교체험") dates.add(a.date);
+    });
+    const placedSessions = dates.size;
+    const N = ins.length;
+    const p = ((Number(seedP) || 0) + placedSessions * 2) % N;
+    const restIdx = [p, (p + 1) % N];
+    const restNames = restIdx.map((i) => ins[i]);
+    const participateNames = ins.filter((_, i) => i !== restIdx[0] && i !== restIdx[1]);
+    return {
+      rest: restNames,
+      participate: participateNames,
+      placedSessions,
+      nextPointerAfter: (p + 2) % N,
     };
   },
   // 불가자 양보: 추천된 강사가 그 날짜에 불가하면 다음 강사로 미루되, 미뤄진 강사를 다음 차례로 살린다.
