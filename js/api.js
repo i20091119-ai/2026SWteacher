@@ -1,4 +1,26 @@
 // GAS 웹앱 호출 래퍼. CORS preflight 회피를 위해 text/plain로 보낸다.
+// 읽기 액션은 한 번 timeout 시 자동 재시도 (콜드 스타트/캐시 미스 대응).
+const _READ_ACTIONS = new Set(["bootstrap", "getMonth", "getCarryover"]);
+const _LONG_TIMEOUT_MS = 90000;
+const _SHORT_TIMEOUT_MS = 45000;
+
+async function _doFetch(body, timeoutMs) {
+  const endpoint = APP_CONFIG.GAS_ENDPOINT;
+  const ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
+  try {
+    return await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(body),
+      redirect: "follow",
+      signal: ctrl ? ctrl.signal : undefined,
+    });
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 window.api = async function (action, payload) {
   const endpoint = APP_CONFIG.GAS_ENDPOINT;
   if (!endpoint || endpoint.includes("REPLACE_ME")) {
@@ -11,25 +33,31 @@ window.api = async function (action, payload) {
       ? { role: STATE.user.role, name: STATE.user.name || null, idToken: STATE.user.idToken || null }
       : null,
   };
+  const canRetry = _READ_ACTIONS.has(action);
+  const timeoutMs = canRetry ? _LONG_TIMEOUT_MS : _SHORT_TIMEOUT_MS;
+  const maxAttempts = canRetry ? 2 : 1;
+
   let res;
-  const ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
-  const timeoutMs = action === "bootstrap" ? 90000 : 30000;
-  const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
-  try {
-    res = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(body),
-      redirect: "follow",
-      signal: ctrl ? ctrl.signal : undefined,
-    });
-  } catch (e) {
-    if (e && e.name === "AbortError") {
-      throw new Error(`GAS 응답이 ${timeoutMs / 1000}초 내에 오지 않았습니다 (action=${action}). GAS 배포 상태/네트워크를 확인하세요.`);
+  let attempt = 0;
+  while (true) {
+    attempt++;
+    try {
+      res = await _doFetch(body, timeoutMs);
+      break;
+    } catch (e) {
+      if (e && e.name === "AbortError") {
+        if (attempt < maxAttempts) {
+          console.warn(`[api] ${action} 타임아웃 (${timeoutMs/1000}s), 재시도 ${attempt + 1}/${maxAttempts}`);
+          continue;
+        }
+        throw new Error(`GAS 응답이 ${timeoutMs / 1000}초 내에 오지 않았습니다 (action=${action}, 시도=${attempt}). GAS 배포 상태/네트워크를 확인하세요.`);
+      }
+      if (canRetry && attempt < maxAttempts) {
+        console.warn(`[api] ${action} 네트워크 오류, 재시도 ${attempt + 1}/${maxAttempts}:`, e.message);
+        continue;
+      }
+      throw new Error("네트워크 오류 (GAS 호출 실패): " + e.message);
     }
-    throw new Error("네트워크 오류 (GAS 호출 실패): " + e.message);
-  } finally {
-    if (timer) clearTimeout(timer);
   }
   if (!res.ok) throw new Error(`HTTP ${res.status} (action=${action})`);
   const text = await res.text();
