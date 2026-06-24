@@ -482,19 +482,27 @@ function saveAssignment(a) {
   const carry = isTrue(a.carry);
   if (a.id) {
     const idx = rows.findIndex((r) => String(r.id) === String(a.id));
-    if (idx === -1) throw new Error("배치를 찾을 수 없습니다: " + a.id);
-    sh.getRange(rows[idx].__row, 1, 1, headers.length).setValues([[
+    if (idx !== -1) {
+      sh.getRange(rows[idx].__row, 1, 1, headers.length).setValues([[
+        a.id, a.date, a.kind, a.form || "", a.role || "", a.name,
+        a.hExplain || 0, a.hSupport || 0, a.hResearch || 0, a.memo || "", carry,
+      ]]);
+      invalidateTab(TABS.schedule);
+      return { id: a.id, mode: "updated" };
+    }
+    // ID는 있는데 시트에 행이 없음 — 캐시 어긋남으로 보고 그 ID 그대로 새로 삽입(upsert)
+    sh.appendRow([
       a.id, a.date, a.kind, a.form || "", a.role || "", a.name,
       a.hExplain || 0, a.hSupport || 0, a.hResearch || 0, a.memo || "", carry,
-    ]]);
+    ]);
     invalidateTab(TABS.schedule);
-    return { id: a.id };
+    return { id: a.id, mode: "reinserted" };
   } else {
     const id = Utilities.getUuid();
     sh.appendRow([id, a.date, a.kind, a.form || "", a.role || "", a.name,
       a.hExplain || 0, a.hSupport || 0, a.hResearch || 0, a.memo || "", carry]);
     invalidateTab(TABS.schedule);
-    return { id };
+    return { id, mode: "created" };
   }
 }
 
@@ -519,10 +527,14 @@ function deleteAssignment(id) {
   const sh = getSheet(TABS.schedule, HEADERS.schedule);
   const rows = readAll(sh);
   const idx = rows.findIndex((r) => String(r.id) === String(id));
-  if (idx === -1) throw new Error("배치를 찾을 수 없습니다");
+  if (idx === -1) {
+    // 이미 삭제된 상태로 간주 (캐시 어긋남) — 멱등 처리
+    invalidateTab(TABS.schedule);
+    return { ok: true, mode: "already_gone" };
+  }
   sh.deleteRow(rows[idx].__row);
   invalidateTab(TABS.schedule);
-  return { ok: true };
+  return { ok: true, mode: "deleted" };
 }
 
 function setSeed(ym, kind, pointer) {
