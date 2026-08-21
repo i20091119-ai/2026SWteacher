@@ -104,6 +104,10 @@ let sessionToken = null; // 새 백엔드 인증용
 let payload = null;      // 시트에서 뽑아온 데이터
 
 $("apiUrl").value = (APP_CONFIG.API_ENDPOINT || "").replace(/\/+$/, "");
+try { $("gasUrl").value = localStorage.getItem("swt_gas_url") || ""; } catch (e) {}
+$("gasUrl").addEventListener("change", () => {
+  try { localStorage.setItem("swt_gas_url", $("gasUrl").value.trim()); } catch (e) {}
+});
 
 function setReady() {
   const authed = !!(idToken && sessionToken);
@@ -142,12 +146,32 @@ async function callGas(action, p) {
   return j.data;
 }
 
+const DATA_KEYS = ["instructors", "unavailable", "submissions", "assignments", "swaps", "programs", "settings"];
+
+function totalRows(d) {
+  return DATA_KEYS.reduce((s, k) => s + ((d && d[k]) || []).length, 0);
+}
+
 function summarize(d) {
-  const n = (k) => (d[k] || []).length;
+  const n = (k) => ((d && d[k]) || []).length;
   return `강사 ${n("instructors")} · 활동불가일 ${n("unavailable")} · 제출현황 ${n("submissions")}`
        + ` · 일정 ${n("assignments")} · 교체요청 ${n("swaps")} · 학생프로그램 ${n("programs")}`
        + ` · 설정 ${n("settings")}`
-       + (d.sheetId ? `\n  (원본 시트: ${d.sheetId})` : "");
+       + (d && d.sheetId ? `\n  (원본 시트: ${d.sheetId})` : "");
+}
+
+/** 0건이 나오면 왜 그런지 짚을 수 있게 응답의 실제 모양을 남긴다. */
+function diagnoseEmpty(d) {
+  log("⚠ 시트에서 가져온 데이터가 0건입니다. 아래를 확인하세요.");
+  log("  응답에 들어있는 키: " + (d && typeof d === "object" ? JSON.stringify(Object.keys(d)) : String(d)));
+  if (!d || !d.sheetId) {
+    log("  · 응답에 sheetId 가 없습니다 → Apps Script 가 옛 코드로 배포돼 있을 수 있습니다.");
+    log("    gas/Code.gs 를 다시 붙여넣고 [배포 > 배포 관리 > 편집 > 버전: 새 버전] 으로 배포하세요.");
+  } else {
+    log(`  · 읽은 시트: ${d.sheetId} — 이 시트에 실제로 데이터가 있는지 확인하세요.`);
+  }
+  log("  · 주소가 웹앱 URL(.../exec) 인지 확인하세요. 라이브러리 URL(/macros/library/...) 은 안 됩니다.");
+  log("    지금 주소: " + $("gasUrl").value.trim());
 }
 
 window.onGoogle = async (resp) => {
@@ -169,9 +193,16 @@ $("btnExport").onclick = async () => {
   $("exportState").textContent = "가져오는 중...";
   try {
     payload = await callGas("exportAll");
-    $("exportState").textContent = "가져옴";
-    $("exportState").className = "chip ok";
     log("시트에서 가져옴 — " + summarize(payload));
+    if (totalRows(payload) === 0) {
+      payload = null;                       // 빈 데이터로 적재를 진행시키지 않는다
+      $("exportState").textContent = "0건";
+      $("exportState").className = "chip warn";
+      diagnoseEmpty(payload);
+    } else {
+      $("exportState").textContent = "가져옴";
+      $("exportState").className = "chip ok";
+    }
   } catch (e) {
     $("exportState").textContent = "실패";
     $("exportState").className = "chip warn";
@@ -182,10 +213,17 @@ $("btnExport").onclick = async () => {
 
 $("btnPaste").onclick = () => {
   try {
-    payload = JSON.parse($("pasteJson").value);
-    $("exportState").textContent = "붙여넣기 사용";
-    $("exportState").className = "chip ok";
-    log("붙여넣은 JSON 사용 — " + summarize(payload));
+    const parsed = JSON.parse($("pasteJson").value);
+    log("붙여넣은 JSON — " + summarize(parsed));
+    if (totalRows(parsed) === 0) {
+      $("exportState").textContent = "0건";
+      $("exportState").className = "chip warn";
+      diagnoseEmpty(parsed);
+    } else {
+      payload = parsed;
+      $("exportState").textContent = "붙여넣기 사용";
+      $("exportState").className = "chip ok";
+    }
   } catch (e) {
     log("JSON 해석 실패: " + e.message);
   }
