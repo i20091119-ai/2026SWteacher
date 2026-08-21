@@ -70,7 +70,11 @@ npx wrangler d1 create swteacher-db
 ```
 
 출력에 나오는 `database_id` (긴 영문+숫자 문자열)를 복사해
-`worker/wrangler.toml` 의 `database_id = "PASTE_DATABASE_ID_HERE"` 자리에 붙여넣습니다.
+`worker/wrangler.toml` 의 `database_id` 자리에 붙여넣습니다.
+
+> **`[[d1_databases]]` 블록을 통째로 붙여넣지 마세요.**
+> wrangler 는 `binding = "swteacher_db"` 를 제안하지만, 코드는 `env.DB` 를 참조하므로
+> `binding` 은 반드시 `"DB"` 로 두어야 합니다. **`database_id` 한 줄만** 바꾸면 됩니다.
 
 ```powershell
 notepad wrangler.toml        # 메모장으로 열어서 고치고 저장

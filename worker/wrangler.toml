@@ -3,11 +3,14 @@ main = "src/index.js"
 compatibility_date = "2024-11-01"
 
 # D1 데이터베이스 바인딩.
-# `wrangler d1 create swteacher-db` 실행 후 출력된 database_id 를 아래에 붙여넣으세요.
+# binding 은 반드시 "DB" 여야 합니다. 코드가 env.DB 로 참조합니다.
+# (wrangler d1 create 출력이 제안하는 binding = "swteacher_db" 를 그대로 붙여넣지 마세요)
+# database_id 는 `wrangler d1 create swteacher-db` 가 알려준 값입니다.
+# 자격증명이 아니라 식별자라서 저장소에 두어도 안전합니다.
 [[d1_databases]]
 binding = "DB"
 database_name = "swteacher-db"
-database_id = "PASTE_DATABASE_ID_HERE"
+database_id = "50dfd282-8aa3-4df8-81fb-748c721c97f1"
 
 [vars]
 # 프론트엔드와 동일한 OAuth 2.0 클라이언트 ID
