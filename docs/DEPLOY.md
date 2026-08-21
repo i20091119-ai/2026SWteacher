@@ -52,7 +52,14 @@ dir                                  # worker 폴더가 보이면 정상
 ## 1. Cloudflare 준비 (한 번만)
 
 1. https://dash.cloudflare.com 에서 무료 계정을 만듭니다.
-2. 저장소 폴더 안에서:
+2. **가입 메일의 인증 링크를 반드시 눌러 이메일을 인증합니다.**
+   인증하지 않으면 배포 단계에서 이렇게 막힙니다.
+   ```
+   You need to verify your email address to use Workers.  [code: 10034]
+   ```
+   대시보드 상단에 인증 배너가 뜹니다. 메일이 안 보이면 스팸함을 확인하고,
+   그래도 없으면 배너의 **Resend** 로 다시 받습니다.
+3. 저장소 폴더 안에서:
 
 ```powershell
 cd worker                   # 반드시 2026SWteacher 폴더 안에서
@@ -60,7 +67,7 @@ npm install
 npx wrangler login          # 브라우저가 열리고 계정 연결을 승인
 ```
 
-> 이후 2~5단계 명령은 **전부 `worker` 폴더 안에서** 실행합니다.
+> 이후 2·4·5단계 명령은 **전부 `worker` 폴더 안에서** 실행합니다.
 > 헷갈리면 `pwd` 로 현재 위치가 `...\2026SWteacher\worker` 인지 확인하세요.
 
 ## 2. 데이터베이스 만들기
@@ -93,9 +100,50 @@ npm run db:schema     # 표 생성
 npm run db:seed       # 강사 5명 · 단가 · 2026년 공휴일 · 최초 관리자
 ```
 
-## 3. 설정값 넣기
+## 3. Google OAuth 클라이언트 ID
+
+> 기존에 쓰던 클라이언트 ID 를 그대로 쓴다면 **아래 "필수 확인" 한 가지만** 하면 됩니다.
+> 클라이언트 ID 는 `wrangler.toml` 과 `js/config.js` 양쪽에 이미 들어가 있습니다.
+
+**필수 확인 — 승인된 자바스크립트 원본**
+
+https://console.cloud.google.com → **사용자 인증 정보 > 해당 OAuth 클라이언트 ID** 를 열어,
+**승인된 자바스크립트 원본** 에 GitHub Pages 주소가 있는지 봅니다.
+없으면 추가하세요. 등록돼 있지 않으면 관리자 로그인이 실패합니다.
+
+```
+https://i20091119-ai.github.io
+http://localhost:8787          (로컬 미리보기를 쓸 때만)
+```
+
+<details>
+<summary>클라이언트 ID 를 새로 발급하는 경우</summary>
+
+1. https://console.cloud.google.com → 프로젝트 선택/생성
+2. **API 및 서비스 > OAuth 동의 화면** 구성. 테스트 사용자에 관리자 Google 계정 추가.
+3. **사용자 인증 정보 > OAuth 클라이언트 ID > 웹 애플리케이션**
+4. **승인된 자바스크립트 원본** 에 위 주소들을 등록
+5. 발급된 ID 를 **두 곳 모두** 에 넣습니다 — `worker/wrangler.toml` 의 `GOOGLE_CLIENT_ID`,
+   `js/config.js` 의 `GOOGLE_CLIENT_ID`.
+   둘이 다르면 관리자 로그인이 "OAuth 클라이언트 ID가 일치하지 않습니다" 로 실패합니다.
+
+</details>
+
+## 4. 백엔드 배포
+
+```powershell
+npm run deploy
+```
+
+배포되면 `https://swteacher-api.<계정>.workers.dev` 같은 주소가 나옵니다.
+브라우저로 그 주소를 열어 `{"ok":true,...,"db":true}` 가 보이면 정상입니다.
+
+> 이 시점에는 아직 세션 키가 없어서 관리자 로그인만 실패합니다(5단계에서 등록).
+
+## 5. 세션 서명 키 등록
 
 `worker/wrangler.toml` 의 `[vars]` 두 값은 **이미 채워져 있습니다.** 그대로 두면 됩니다.
+(아래 설명은 참고용이며, 손댈 것은 없습니다.)
 
 - `GOOGLE_CLIENT_ID` — 기존에 쓰던 OAuth 클라이언트 ID
 - `ALLOWED_ORIGINS` — `https://i20091119-ai.github.io`
@@ -103,6 +151,8 @@ npm run db:seed       # 강사 5명 · 단가 · 2026년 공휴일 · 최초 관
     **비우면 아무 사이트에서나 호출할 수 있으니 절대 비워두지 마세요.**
 
 세션 서명 키만 등록하면 됩니다. 코드에 두지 말고 시크릿으로 넣습니다.
+**워커를 먼저 배포한 뒤에 등록해야** 흐름이 꼬이지 않습니다(배포 없이 등록하면
+wrangler 가 "워커를 새로 만들까요?" 를 먼저 묻습니다). 등록 즉시 반영되며 재배포는 필요 없습니다.
 
 먼저 아무도 모르는 무작위 문자열을 만듭니다.
 
@@ -129,36 +179,9 @@ npx wrangler secret put SESSION_SECRET
 > `SESSION_SECRET` 을 바꾸면 이미 로그인한 사람들의 세션이 모두 끊깁니다(다시 로그인하면 됨).
 > 한 번 등록하면 다시 볼 수 없으니, 따로 적어두실 필요는 없지만 재등록은 언제든 가능합니다.
 
-## 4. Google OAuth 클라이언트 ID
-
-1. https://console.cloud.google.com → 프로젝트 선택/생성
-2. **API 및 서비스 > OAuth 동의 화면** 구성. 테스트 사용자에 관리자 Google 계정 추가.
-3. **사용자 인증 정보 > OAuth 클라이언트 ID > 웹 애플리케이션**
-4. **승인된 자바스크립트 원본** 에 GitHub Pages 주소를 등록
-   (예: `https://i20091119-ai.github.io`, 로컬 테스트용 `http://localhost:8787`)
-> **기존에 쓰던 클라이언트 ID 를 그대로 쓰신다면 이 단계는 4-1 만 하면 됩니다.**
-> 클라이언트 ID 는 `wrangler.toml` 과 `js/config.js` 양쪽에 이미 들어가 있습니다.
-
-**4-1. 승인된 자바스크립트 원본 확인 (필수)**
-GitHub Pages 주소가 등록돼 있지 않으면 관리자 로그인이 실패합니다.
-새로 발급했다면 클라이언트 ID 를 **두 곳** 에 넣으세요.
-   - `worker/wrangler.toml` 의 `GOOGLE_CLIENT_ID`
-   - `js/config.js` 의 `GOOGLE_CLIENT_ID`
-   - 둘이 다르면 관리자 로그인이 "OAuth 클라이언트 ID가 일치하지 않습니다" 로 실패합니다.
-
-## 5. 백엔드 배포
-
-```bash
-cd worker
-npm run deploy
-```
-
-배포되면 `https://swteacher-api.<계정>.workers.dev` 같은 주소가 나옵니다.
-브라우저로 그 주소를 열어 `{"ok":true,...,"db":true}` 가 보이면 정상입니다.
-
 ## 6. 프론트엔드 연결 + 배포
 
-`js/config.js` 의 `API_ENDPOINT` 에 5단계 주소를 넣습니다.
+`js/config.js` 의 `API_ENDPOINT` 에 4단계에서 나온 워커 주소를 넣습니다.
 
 ```js
 API_ENDPOINT: (location.hostname === "localhost" || location.hostname === "127.0.0.1")
