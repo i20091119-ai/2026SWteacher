@@ -69,8 +69,18 @@ npx wrangler login          # 브라우저가 열리고 계정 연결을 승인
 npx wrangler d1 create swteacher-db
 ```
 
-출력에 나오는 `database_id` 를 복사해 `worker/wrangler.toml` 의
-`database_id = "PASTE_DATABASE_ID_HERE"` 자리에 붙여넣습니다.
+출력에 나오는 `database_id` (긴 영문+숫자 문자열)를 복사해
+`worker/wrangler.toml` 의 `database_id = "PASTE_DATABASE_ID_HERE"` 자리에 붙여넣습니다.
+
+```powershell
+notepad wrangler.toml        # 메모장으로 열어서 고치고 저장
+```
+
+고친 뒤 이렇게 되어 있어야 합니다.
+
+```toml
+database_id = "1a2b3c4d-....-............"
+```
 
 이어서 표(스키마)와 초기 데이터를 넣습니다.
 
@@ -81,21 +91,39 @@ npm run db:seed       # 강사 5명 · 단가 · 2026년 공휴일 · 최초 관
 
 ## 3. 설정값 넣기
 
-`worker/wrangler.toml` 의 `[vars]`:
+`worker/wrangler.toml` 의 `[vars]` 두 값은 **이미 채워져 있습니다.** 그대로 두면 됩니다.
 
-- `GOOGLE_CLIENT_ID` — 아래 4단계에서 발급받는 값
-- `ALLOWED_ORIGINS` — GitHub Pages 주소. 예: `https://i20091119-ai.github.io`
-  - **비워두면 아무 사이트에서나 API 를 호출할 수 있습니다. 반드시 채우세요.**
+- `GOOGLE_CLIENT_ID` — 기존에 쓰던 OAuth 클라이언트 ID
+- `ALLOWED_ORIGINS` — `https://i20091119-ai.github.io`
+  - 이 목록에 없는 사이트에서 온 요청은 막힙니다.
+    **비우면 아무 사이트에서나 호출할 수 있으니 절대 비워두지 마세요.**
 
-세션 서명 키는 코드에 두지 말고 시크릿으로 등록합니다.
+세션 서명 키만 등록하면 됩니다. 코드에 두지 말고 시크릿으로 넣습니다.
+
+먼저 아무도 모르는 무작위 문자열을 만듭니다.
+
+```powershell
+# Windows PowerShell
+$b = New-Object byte[] 32
+[Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b)
+[Convert]::ToBase64String($b)
+```
 
 ```bash
-# 아무도 모르는 긴 무작위 문자열. 아래처럼 만들어 붙여넣으면 됩니다.
+# macOS / Linux
 openssl rand -base64 32
+```
+
+출력된 문자열을 복사한 뒤:
+
+```powershell
 npx wrangler secret put SESSION_SECRET
+# Enter a secret value: 라고 물으면 붙여넣고 Enter
+# (입력한 글자는 화면에 보이지 않습니다 — 정상입니다)
 ```
 
 > `SESSION_SECRET` 을 바꾸면 이미 로그인한 사람들의 세션이 모두 끊깁니다(다시 로그인하면 됨).
+> 한 번 등록하면 다시 볼 수 없으니, 따로 적어두실 필요는 없지만 재등록은 언제든 가능합니다.
 
 ## 4. Google OAuth 클라이언트 ID
 
@@ -104,9 +132,15 @@ npx wrangler secret put SESSION_SECRET
 3. **사용자 인증 정보 > OAuth 클라이언트 ID > 웹 애플리케이션**
 4. **승인된 자바스크립트 원본** 에 GitHub Pages 주소를 등록
    (예: `https://i20091119-ai.github.io`, 로컬 테스트용 `http://localhost:8787`)
-5. 발급된 클라이언트 ID를 **두 곳**에 넣습니다.
+> **기존에 쓰던 클라이언트 ID 를 그대로 쓰신다면 이 단계는 4-1 만 하면 됩니다.**
+> 클라이언트 ID 는 `wrangler.toml` 과 `js/config.js` 양쪽에 이미 들어가 있습니다.
+
+**4-1. 승인된 자바스크립트 원본 확인 (필수)**
+GitHub Pages 주소가 등록돼 있지 않으면 관리자 로그인이 실패합니다.
+새로 발급했다면 클라이언트 ID 를 **두 곳** 에 넣으세요.
    - `worker/wrangler.toml` 의 `GOOGLE_CLIENT_ID`
    - `js/config.js` 의 `GOOGLE_CLIENT_ID`
+   - 둘이 다르면 관리자 로그인이 "OAuth 클라이언트 ID가 일치하지 않습니다" 로 실패합니다.
 
 ## 5. 백엔드 배포
 
