@@ -28,13 +28,25 @@ async function dispatch(action, p, ctx, db, env) {
     case "submitUnavailable": return H.submitUnavailable(db, ctx, p);
 
     /* 관리자 */
-    case "saveAssignment":   return H.saveAssignment(db, ctx, p);
+    case "saveAssignment":       return H.saveAssignment(db, ctx, p);
+    case "saveAssignmentsBatch": return H.saveAssignmentsBatch(db, ctx, p);
     case "deleteAssignment": return H.deleteAssignment(db, ctx, p);
     case "setSetting":       return H.setSetting(db, ctx, p);
     case "addInstructor":    return H.addInstructor(db, ctx, p);
     case "removeInstructor": return H.removeInstructor(db, ctx, p);
     case "setHoliday":       return H.setHoliday(db, ctx, p);
     case "setPublished":     return H.setPublished(db, ctx, p);
+
+    /* 수업 교체 */
+    case "createSwap":       return H.createSwap(db, ctx, p);
+    case "cancelSwap":       return H.cancelSwap(db, ctx, p);
+    case "approveSwap":      return H.approveSwap(db, ctx, p);
+    case "rejectSwap":       return H.rejectSwap(db, ctx, p);
+
+    /* 학생 프로그램 */
+    case "createProgram":    return H.createProgram(db, ctx, p);
+    case "updateProgram":    return H.updateProgram(db, ctx, p);
+    case "deleteProgram":    return H.deleteProgram(db, ctx, p);
 
     /* 백업 / 마이그레이션 */
     case "exportAll":        return H.exportAll(db, ctx);

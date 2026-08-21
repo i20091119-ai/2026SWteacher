@@ -78,9 +78,9 @@ describe("헬스체크 / CORS", () => {
 describe("bootstrap", () => {
   test("강사 5명을 가나다순으로 준다", async () => {
     const d = await must("bootstrap");
-    assert.deepEqual(d.instructors, ["김경화", "신미정", "이경향", "이수원", "이윤미"]);
+    assert.deepEqual(d.instructors, ["김경화", "신미정", "이경향", "이수원", "이윤미", "현수진"]);
     assert.equal(d.settings["rate.explain"], "30000");
-    assert.equal(d.settings["weeklyCap"], "14");
+    assert.equal(d.settings["weeklyCap"], "20");
   });
 
   test("설정에 holiday.* / admin.whitelist 가 섞여 있지 않다", async () => {
@@ -256,7 +256,7 @@ describe("강사 관리", () => {
     await must("addInstructor", { name: "박서준" }, { token: adminToken });
     const d = await must("bootstrap");
     assert.ok(d.instructors.includes("박서준"));
-    assert.equal(d.instructors.length, 6);
+    assert.equal(d.instructors.length, 7);
   });
 
   test("중복 추가는 거부된다", async () => {
@@ -333,8 +333,8 @@ describe("getAdminMonth — 왕복 1회", () => {
     const d = await must("getAdminMonth", { ym: "2026-06" }, { token: adminToken });
     assert.equal(d.ym, "2026-06");
     assert.deepEqual(d.assignments.map((a) => a.date), ["2026-06-06"]);
-    assert.equal(d.instructors.length, 5);
-    assert.equal(d.settings["weeklyCap"], "14");
+    assert.equal(d.instructors.length, 6);
+    assert.equal(d.settings["weeklyCap"], "20");
   });
 
   test("관리자가 아니면 막힌다", async () => {
@@ -406,7 +406,7 @@ describe("마이그레이션 (importAll)", () => {
     assert.deepEqual(jul.holidays, ["2026-07-17"], "holiday.* 가 holidays 테이블로 옮겨져야 한다");
   });
 
-  test("폐지된 이월 유형도 과거 기록은 그대로 받아들인다", async () => {
+  test("이월 유형 기록도 그대로 받아들인다", async () => {
     const d = await must("importAll", {
       assignments: [{ id: "old1", date: "2026-07-06", kind: "연구이월", name: "김경화", hResearch: 4.5 }],
     }, { token: adminToken });
@@ -415,11 +415,13 @@ describe("마이그레이션 (importAll)", () => {
     assert.equal(m.assignments[0].kind, "연구이월");
   });
 
-  test("이월 유형을 새로 만들 수는 없다", async () => {
-    const r = await call("saveAssignment",
-      { date: "2026-07-06", kind: "연구이월", name: "김경화", hResearch: 3 }, { token: adminToken });
-    assert.equal(r.ok, false);
-    assert.equal(r.status, 400);
+  test("이월 유형도 관리자가 직접 편성할 수 있다 (장부 보전용)", async () => {
+    const d = await must("saveAssignment",
+      { date: "2026-07-06", kind: "연구이월", name: "김경화", hResearch: 3, memo: "6월 이월분" },
+      { token: adminToken });
+    assert.ok(d.id);
+    const m = await must("getMonth", { ym: "2026-07" });
+    assert.equal(m.assignments.find((a) => a.id === d.id).kind, "연구이월");
   });
 
   test("admin.whitelist 쉼표 목록이 admins 테이블로 흩어진다", async () => {
@@ -471,7 +473,7 @@ describe("exportAll — 백업", () => {
     await must("saveAssignment",
       { date: "2026-06-06", kind: "해설", name: "김경화", hExplain: 3 }, { token: adminToken });
     const d = await must("exportAll", {}, { token: adminToken });
-    assert.equal(d.instructors.length, 5);
+    assert.equal(d.instructors.length, 7);   // 파견교사 포함
     assert.equal(d.assignments.length, 1);
     assert.equal(d.holidays.length, 20);
     assert.ok(d.exportedAt);
@@ -486,5 +488,201 @@ describe("감사 로그", () => {
     assert.equal(r.results.length, 1);
     assert.equal(r.results[0].actor, "i20091119@gmail.com");
     assert.equal(r.results[0].action, "assignment.create");
+  });
+});
+
+describe("수업 교체", () => {
+  const A = { date: "2026-06-13", kind: "해설", form: "주말어드벤처", role: "토오전", name: "김경화", hExplain: 3 };
+  let assignmentId, kimToken, leeToken;
+
+  beforeEach(async () => {
+    assignmentId = (await must("saveAssignment", A, { token: adminToken })).id;
+    kimToken = (await must("loginInstructor", { name: "김경화" })).sessionToken;
+    leeToken = (await must("loginInstructor", { name: "이경향" })).sessionToken;
+  });
+
+  test("공개 전에는 신청할 수 없다", async () => {
+    const r = await call("createSwap", { assignmentId, target: "이경향" }, { token: kimToken });
+    assert.equal(r.ok, false);
+    assert.match(r.error, /공개/);
+  });
+
+  test("신청 → 승인 시 배치의 담당 강사가 바뀐다", async () => {
+    await must("setPublished", { ym: "2026-06", published: true }, { token: adminToken });
+    const { id } = await must("createSwap", { assignmentId, target: "이경향", note: "개인 사정" }, { token: kimToken });
+
+    let m = await must("getMonth", { ym: "2026-06" });
+    assert.equal(m.swaps.length, 1);
+    assert.equal(m.swaps[0].status, "pending_admin");
+    assert.equal(m.assignments[0].name, "김경화", "승인 전에는 그대로");
+
+    await must("approveSwap", { swapId: id }, { token: adminToken });
+    m = await must("getMonth", { ym: "2026-06" });
+    assert.equal(m.assignments[0].name, "이경향");
+    assert.equal(m.swaps[0].status, "completed");
+  });
+
+  test("거절하면 배치는 그대로다", async () => {
+    await must("setPublished", { ym: "2026-06", published: true }, { token: adminToken });
+    const { id } = await must("createSwap", { assignmentId, target: "이경향" }, { token: kimToken });
+    await must("rejectSwap", { swapId: id }, { token: adminToken });
+    const m = await must("getMonth", { ym: "2026-06" });
+    assert.equal(m.assignments[0].name, "김경화");
+    assert.equal(m.swaps[0].status, "rejected");
+  });
+
+  test("남의 배치로는 신청할 수 없다", async () => {
+    await must("setPublished", { ym: "2026-06", published: true }, { token: adminToken });
+    const r = await call("createSwap", { assignmentId, target: "이수원" }, { token: leeToken });
+    assert.equal(r.ok, false);
+    assert.equal(r.status, 403);
+  });
+
+  test("자기 자신에게는 넘길 수 없다", async () => {
+    await must("setPublished", { ym: "2026-06", published: true }, { token: adminToken });
+    const r = await call("createSwap", { assignmentId, target: "김경화" }, { token: kimToken });
+    assert.equal(r.ok, false);
+  });
+
+  test("같은 배치에 두 번 신청할 수 없다", async () => {
+    await must("setPublished", { ym: "2026-06", published: true }, { token: adminToken });
+    await must("createSwap", { assignmentId, target: "이경향" }, { token: kimToken });
+    const r = await call("createSwap", { assignmentId, target: "이수원" }, { token: kimToken });
+    assert.equal(r.ok, false);
+    assert.match(r.error, /대기 중/);
+  });
+
+  test("신청자만 취소할 수 있고, 취소 후에는 다시 신청된다", async () => {
+    await must("setPublished", { ym: "2026-06", published: true }, { token: adminToken });
+    const { id } = await must("createSwap", { assignmentId, target: "이경향" }, { token: kimToken });
+
+    const nope = await call("cancelSwap", { swapId: id }, { token: leeToken });
+    assert.equal(nope.ok, false);
+
+    await must("cancelSwap", { swapId: id }, { token: kimToken });
+    await must("createSwap", { assignmentId, target: "이수원" }, { token: kimToken });
+  });
+
+  test("신청 뒤 관리자가 담당을 바꿔놨으면 승인이 막힌다", async () => {
+    await must("setPublished", { ym: "2026-06", published: true }, { token: adminToken });
+    const { id } = await must("createSwap", { assignmentId, target: "이경향" }, { token: kimToken });
+    await must("saveAssignment", { ...A, id: assignmentId, name: "이윤미" }, { token: adminToken });
+    const r = await call("approveSwap", { swapId: id }, { token: adminToken });
+    assert.equal(r.ok, false);
+    assert.match(r.error, /달라졌습니다/);
+    const m = await must("getMonth", { ym: "2026-06" });
+    assert.equal(m.assignments[0].name, "이윤미", "엉뚱한 사람이 밀려나면 안 된다");
+  });
+
+  test("이미 끝난 요청은 다시 승인되지 않는다", async () => {
+    await must("setPublished", { ym: "2026-06", published: true }, { token: adminToken });
+    const { id } = await must("createSwap", { assignmentId, target: "이경향" }, { token: kimToken });
+    await must("approveSwap", { swapId: id }, { token: adminToken });
+    const r = await call("approveSwap", { swapId: id }, { token: adminToken });
+    assert.equal(r.ok, false);
+  });
+
+  test("강사는 승인할 수 없다", async () => {
+    await must("setPublished", { ym: "2026-06", published: true }, { token: adminToken });
+    const { id } = await must("createSwap", { assignmentId, target: "이경향" }, { token: kimToken });
+    const r = await call("approveSwap", { swapId: id }, { token: kimToken });
+    assert.equal(r.ok, false);
+    assert.equal(r.status, 403);
+  });
+});
+
+describe("학생 프로그램", () => {
+  const P = { dateStart: "2026-06-09", dateEnd: "2026-06-12", session: "오전", school: "호계초", students: 22 };
+
+  test("추가 → 수정 → 삭제", async () => {
+    const { id } = await must("createProgram", P, { token: adminToken });
+    let m = await must("getMonth", { ym: "2026-06" });
+    assert.equal(m.programs.length, 1);
+    assert.equal(m.programs[0].school, "호계초");
+    assert.equal(m.programs[0].students, 22);
+
+    await must("updateProgram", { ...P, id, students: 25, note: "인원 변경" }, { token: adminToken });
+    m = await must("getMonth", { ym: "2026-06" });
+    assert.equal(m.programs[0].students, 25);
+    assert.equal(m.programs[0].note, "인원 변경");
+
+    await must("deleteProgram", { id }, { token: adminToken });
+    m = await must("getMonth", { ym: "2026-06" });
+    assert.equal(m.programs.length, 0);
+  });
+
+  test("달을 넘어가는 프로그램은 양쪽 달에 모두 보인다", async () => {
+    await must("createProgram",
+      { dateStart: "2026-06-29", dateEnd: "2026-07-03", school: "창신중", students: 30 }, { token: adminToken });
+    const jun = await must("getMonth", { ym: "2026-06" });
+    const jul = await must("getMonth", { ym: "2026-07" });
+    assert.equal(jun.programs.length, 1);
+    assert.equal(jul.programs.length, 1);
+    const may = await must("getMonth", { ym: "2026-05" });
+    assert.equal(may.programs.length, 0);
+  });
+
+  test("종료일을 생략하면 하루짜리가 된다", async () => {
+    await must("createProgram", { dateStart: "2026-06-23", school: "진례초", students: 30 }, { token: adminToken });
+    const m = await must("getMonth", { ym: "2026-06" });
+    assert.equal(m.programs[0].dateEnd, "2026-06-23");
+  });
+
+  test("종료일이 시작일보다 빠르면 거부된다", async () => {
+    const r = await call("createProgram",
+      { dateStart: "2026-06-23", dateEnd: "2026-06-20", school: "진례초" }, { token: adminToken });
+    assert.equal(r.ok, false);
+  });
+
+  test("학교 이름 없이는 만들 수 없다", async () => {
+    const r = await call("createProgram", { dateStart: "2026-06-23", school: "  " }, { token: adminToken });
+    assert.equal(r.ok, false);
+  });
+
+  test("강사는 프로그램을 만들 수 없다", async () => {
+    const t = (await must("loginInstructor", { name: "김경화" })).sessionToken;
+    const r = await call("createProgram", P, { token: t });
+    assert.equal(r.ok, false);
+    assert.equal(r.status, 403);
+  });
+});
+
+describe("배치 일괄 저장", () => {
+  const base = { date: "2026-06-17", kind: "해설", form: "학교체험", hExplain: 4 };
+
+  test("여러 강사를 한 번에 배치한다", async () => {
+    const d = await must("saveAssignmentsBatch", {
+      assignments: ["김경화", "신미정", "이경향"].map((name) => ({ ...base, name })),
+    }, { token: adminToken });
+    assert.equal(d.ids.length, 3);
+    const m = await must("getMonth", { ym: "2026-06" });
+    assert.deepEqual(m.assignments.map((a) => a.name).sort(), ["김경화", "신미정", "이경향"]);
+  });
+
+  test("하나라도 잘못되면 아무것도 저장하지 않는다", async () => {
+    const r = await call("saveAssignmentsBatch", {
+      assignments: [{ ...base, name: "김경화" }, { ...base, name: "없는사람" }],
+    }, { token: adminToken });
+    assert.equal(r.ok, false);
+    const m = await must("getMonth", { ym: "2026-06" });
+    assert.equal(m.assignments.length, 0, "부분 저장되면 안 된다");
+  });
+
+  test("빈 목록은 거부된다", async () => {
+    const r = await call("saveAssignmentsBatch", { assignments: [] }, { token: adminToken });
+    assert.equal(r.ok, false);
+  });
+});
+
+describe("이월 표시(carry) 플래그", () => {
+  test("저장·조회되며 기본값은 꺼짐", async () => {
+    const A = { date: "2026-06-01", kind: "연구", name: "김경화", hResearch: 3 };
+    const { id } = await must("saveAssignment", A, { token: adminToken });
+    let m = await must("getMonth", { ym: "2026-06" });
+    assert.equal(m.assignments[0].carry, false);
+
+    await must("saveAssignment", { ...A, id, carry: true, memo: "5/11 이월분" }, { token: adminToken });
+    m = await must("getMonth", { ym: "2026-06" });
+    assert.equal(m.assignments[0].carry, true);
   });
 });

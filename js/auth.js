@@ -14,6 +14,7 @@ window.Auth = {
     names.forEach((n) => {
       const b = document.createElement("button");
       b.type = "button";
+      b.className = "btn btn-name";
       b.textContent = n;
       b.addEventListener("click", async () => {
         b.disabled = true;

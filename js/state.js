@@ -2,7 +2,7 @@
 window.STATE = {
   user: null,            // { role:'instructor'|'admin', name?:string, email?:string }
   sessionToken: null,    // 서버가 발급한 세션 토큰 (HMAC 서명, 12시간)
-  instructors: [],       // 가나다순 (순번 계산 기준) — 서버가 정렬해 내려준다
+  instructors: [],       // 가나다순 (순번·명단 기준) — 서버가 정렬해 내려준다
   assignableNames: [],   // 배치 가능한 전체 이름 (순번에 넣지 않는 파견교사 포함)
   settings: {},          // rate.explain / rate.other / weeklyCap
   cache: {
@@ -32,13 +32,77 @@ window.STATE.restore = function () {
 window.STATE.clear = function () {
   STATE.user = null;
   STATE.sessionToken = null;
-  try { sessionStorage.removeItem(SESSION_KEY); } catch (e) {}
+  try {
+    sessionStorage.removeItem(SESSION_KEY);
+    sessionStorage.removeItem("swt_instructors");
+    sessionStorage.removeItem("swt_settings");
+    Object.keys(sessionStorage)
+      .filter((k) => k.indexOf("swt_month_") === 0)
+      .forEach((k) => sessionStorage.removeItem(k));
+  } catch (e) {}
   if (window.api && api.clearCache) api.clearCache();
+};
+
+// 강사 목록/설정을 sessionStorage에 캐시 (페이지 새로고침 시 즉시 표시 + 백그라운드 refresh)
+window.STATE.saveBootCache = function () {
+  try {
+    sessionStorage.setItem("swt_instructors", JSON.stringify({
+      instructors: STATE.instructors,
+      assignableNames: STATE.assignableNames,
+    }));
+    sessionStorage.setItem("swt_settings", JSON.stringify(STATE.settings));
+  } catch (e) {}
+};
+window.STATE.restoreBootCache = function () {
+  try {
+    const ins = sessionStorage.getItem("swt_instructors");
+    const set = sessionStorage.getItem("swt_settings");
+    if (set) STATE.settings = JSON.parse(set);
+    if (ins) {
+      const parsed = JSON.parse(ins);
+      // 예전 형식(배열)도 받아준다
+      STATE.instructors = Array.isArray(parsed) ? parsed : (parsed.instructors || []);
+      STATE.assignableNames = Array.isArray(parsed) ? parsed : (parsed.assignableNames || STATE.instructors);
+      return STATE.instructors;
+    }
+  } catch (e) {}
+  return null;
+};
+// 월별 데이터도 sessionStorage 캐시 (페이지 새로고침 후에도 즉시)
+window.STATE.saveMonthCache = function (ym, data) {
+  STATE.cache.monthData[ym] = data;
+  try { sessionStorage.setItem("swt_month_" + ym, JSON.stringify(data)); } catch (e) {}
+};
+window.STATE.restoreMonthCache = function (ym) {
+  if (STATE.cache.monthData[ym]) return STATE.cache.monthData[ym];
+  try {
+    const v = sessionStorage.getItem("swt_month_" + ym);
+    if (v) {
+      const d = JSON.parse(v);
+      STATE.cache.monthData[ym] = d;
+      return d;
+    }
+  } catch (e) {}
+  return null;
 };
 
 // 한글 가나다 정렬 (기본 localeCompare(ko)로 충분).
 window.sortKo = function (arr) {
   return arr.slice().sort((a, b) => a.localeCompare(b, "ko"));
+};
+
+// Boolean 안전 변환 (Google Sheets의 "TRUE"/"FALSE" 문자열도 처리)
+window.isTrue = function (v) {
+  if (v === true) return true;
+  const s = String(v == null ? "" : v).trim().toLowerCase();
+  return s === "true" || s === "1" || s === "y" || s === "yes";
+};
+
+// 강사 이름 HTML — 파견교사(이상우)는 주황색 강조
+window.nameLabel = function (name) {
+  const n = String(name == null ? "" : name);
+  if (n === "이상우") return `<span class="name-emergency" title="파견교사">${n}</span>`;
+  return n;
 };
 
 // 날짜 유틸

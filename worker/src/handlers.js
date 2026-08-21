@@ -7,10 +7,12 @@ import {
 } from "./util.js";
 import { verifyGoogleIdToken, issueSession, requireAdmin, requireInstructor } from "./auth.js";
 
-// 새로 만들 수 있는 유형. (이월 기능은 폐지됐고, 과거 기록만 LEGACY_KINDS 로 남는다)
-const KINDS = ["해설", "연구", "지원"];
-const LEGACY_KINDS = ["연구이월", "지원이월"];
-const ALL_KINDS = KINDS.concat(LEGACY_KINDS);
+// 배치 유형.
+// `연구이월` / `지원이월` 은 "지난달에 장부에서 뺀 활동을 이번 달에 보전한다"는 뜻으로,
+// 장부·금액 계산에 실제로 쓰이는 항목이다. 자동 이월 추천 기능은 없앴지만
+// 관리자가 손으로 편성하는 이 유형 자체는 그대로 남는다.
+const KINDS = ["해설", "연구", "지원", "연구이월", "지원이월"];
+const ALL_KINDS = KINDS;
 const FORMS = ["", "학교체험", "가족체험", "주말어드벤처"];
 const ROLES = ["", "주", "보조", "토오전", "토오후", "일오전"];
 
@@ -26,6 +28,18 @@ const mapAssignment = (r) => ({
   hSupport: num(r.h_support),
   hResearch: num(r.h_research),
   memo: r.memo || "",
+  carry: !!r.carry,
+});
+const mapSwap = (r) => ({
+  id: r.id, ym: r.ym, assignmentId: r.assignment_id,
+  requester: r.requester, target: r.target, status: r.status,
+  requestedAt: r.requested_at || "", respondedAt: r.responded_at || "",
+  finalizedAt: r.finalized_at || "", note: r.note || "",
+});
+const mapProgram = (r) => ({
+  id: r.id, dateStart: r.date_start, dateEnd: r.date_end,
+  session: r.session || "", school: r.school,
+  students: num(r.students), note: r.note || "",
 });
 const mapUnavail = (r) => ({ name: r.name, date: r.date, reason: r.reason || "" });
 const mapSubmit = (r) => ({
@@ -74,12 +88,15 @@ export async function bootstrap(db) {
 export async function getMonth(db, ymRaw) {
   const ym = assertYm(ymRaw);
   const [from, to] = monthRange(ym);
-  const [a, u, s, h, m] = await db.batch([
+  const [a, u, s, h, m, sw, pr] = await db.batch([
     db.prepare("SELECT * FROM assignments WHERE date >= ? AND date < ? ORDER BY date, form, role").bind(from, to),
     db.prepare("SELECT * FROM unavailable WHERE date >= ? AND date < ? ORDER BY date, name").bind(from, to),
     db.prepare("SELECT * FROM submissions WHERE ym = ?").bind(ym),
     db.prepare("SELECT date FROM holidays WHERE date >= ? AND date < ? ORDER BY date").bind(from, to),
     db.prepare("SELECT published FROM months WHERE ym = ?").bind(ym),
+    db.prepare("SELECT * FROM swaps WHERE ym = ? ORDER BY requested_at").bind(ym),
+    // 기간이 이 달에 걸치기만 하면 가져온다 (달을 넘어가는 프로그램이 있다)
+    db.prepare("SELECT * FROM programs WHERE date_start < ? AND date_end >= ? ORDER BY date_start, session").bind(to, from),
   ]);
   return {
     ym,
@@ -88,6 +105,8 @@ export async function getMonth(db, ymRaw) {
     submits: rows(s).map(mapSubmit),
     holidays: rows(h).map((x) => x.date),
     published: !!(rows(m)[0] && rows(m)[0].published),
+    swaps: rows(sw).map(mapSwap),
+    programs: rows(pr).map(mapProgram),
   };
 }
 
@@ -98,12 +117,14 @@ export async function getMonth(db, ymRaw) {
 export async function getAdminMonth(db, ymRaw) {
   const ym = assertYm(ymRaw);
   const [from, to] = monthRange(ym);
-  const [a, u, s, h, m, ins, all, set] = await db.batch([
+  const [a, u, s, h, m, sw, pr, ins, all, set] = await db.batch([
     db.prepare("SELECT * FROM assignments WHERE date >= ? AND date < ? ORDER BY date, form, role").bind(from, to),
     db.prepare("SELECT * FROM unavailable WHERE date >= ? AND date < ? ORDER BY date, name").bind(from, to),
     db.prepare("SELECT * FROM submissions WHERE ym = ?").bind(ym),
     db.prepare("SELECT date FROM holidays WHERE date >= ? AND date < ? ORDER BY date").bind(from, to),
     db.prepare("SELECT published FROM months WHERE ym = ?").bind(ym),
+    db.prepare("SELECT * FROM swaps WHERE ym = ? ORDER BY requested_at").bind(ym),
+    db.prepare("SELECT * FROM programs WHERE date_start < ? AND date_end >= ? ORDER BY date_start, session").bind(to, from),
     db.prepare("SELECT name FROM instructors WHERE active = 1 ORDER BY name COLLATE NOCASE"),
     db.prepare("SELECT name FROM instructors ORDER BY active DESC, sort_order, name"),
     db.prepare("SELECT key, value FROM settings"),
@@ -117,6 +138,8 @@ export async function getAdminMonth(db, ymRaw) {
     submits: rows(s).map(mapSubmit),
     holidays: rows(h).map((x) => x.date),
     published: !!(rows(m)[0] && rows(m)[0].published),
+    swaps: rows(sw).map(mapSwap),
+    programs: rows(pr).map(mapProgram),
     instructors: rows(ins).map((x) => x.name).sort((a2, b2) => a2.localeCompare(b2, "ko")),
     assignableNames: rows(all).map((x) => x.name),
     settings,
@@ -190,8 +213,8 @@ async function assertAssignable(db, name) {
   if (!row) throw bad(`명단에 없는 이름입니다: ${name}`);
 }
 
-export async function saveAssignment(db, ctx, p) {
-  requireAdmin(ctx);
+/** 배치 한 건을 검증해 정규화한다. 단건 저장과 일괄 저장이 함께 쓴다. */
+async function normalizeAssignment(db, p) {
   const date = assertDate(p.date);
   const name = str(p.name, 50).trim();
   const kind = str(p.kind, 20);
@@ -202,31 +225,62 @@ export async function saveAssignment(db, ctx, p) {
   if (!FORMS.includes(form)) throw bad(`형태가 올바르지 않습니다: ${form}`);
   if (!ROLES.includes(role)) throw bad(`역할이 올바르지 않습니다: ${role}`);
   await assertAssignable(db, name);
-
   const hE = hours(p.hExplain);
   const hS = hours(p.hSupport);
   const hR = hours(p.hResearch);
   if (hE + hS + hR <= 0) throw bad("시수를 하나 이상 입력하세요");
-  const memo = str(p.memo, 500);
+  return { date, name, kind, form, role, hE, hS, hR, memo: str(p.memo, 500), carry: p.carry ? 1 : 0 };
+}
+
+export async function saveAssignment(db, ctx, p) {
+  requireAdmin(ctx);
+  const a = await normalizeAssignment(db, p);
 
   if (p.id) {
     const id = str(p.id, 64);
     const res = await db.prepare(
       `UPDATE assignments SET date=?, kind=?, form=?, role=?, name=?,
-         h_explain=?, h_support=?, h_research=?, memo=?, updated_at=?
+         h_explain=?, h_support=?, h_research=?, memo=?, carry=?, updated_at=?
        WHERE id = ?`,
-    ).bind(date, kind, form, role, name, hE, hS, hR, memo, nowIso(), id).run();
+    ).bind(a.date, a.kind, a.form, a.role, a.name, a.hE, a.hS, a.hR, a.memo, a.carry, nowIso(), id).run();
     if (!res.meta || res.meta.changes === 0) throw missing("배치를 찾을 수 없습니다: " + id);
-    await audit(db, ctx, "assignment.update", `${id} ${date} ${name}`);
+    await audit(db, ctx, "assignment.update", `${id} ${a.date} ${a.name}`);
     return { id };
   }
   const id = crypto.randomUUID();
   await db.prepare(
-    `INSERT INTO assignments (id, date, kind, form, role, name, h_explain, h_support, h_research, memo)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).bind(id, date, kind, form, role, name, hE, hS, hR, memo).run();
-  await audit(db, ctx, "assignment.create", `${id} ${date} ${name}`);
+    `INSERT INTO assignments (id, date, kind, form, role, name, h_explain, h_support, h_research, memo, carry)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(id, a.date, a.kind, a.form, a.role, a.name, a.hE, a.hS, a.hR, a.memo, a.carry).run();
+  await audit(db, ctx, "assignment.create", `${id} ${a.date} ${a.name}`);
   return { id };
+}
+
+/**
+ * 한 날짜에 여러 강사를 한 번에 배치한다.
+ * 하나라도 잘못되면 아무것도 쓰지 않는다(먼저 전부 검증한 뒤 한 배치로 실행).
+ */
+export async function saveAssignmentsBatch(db, ctx, p) {
+  requireAdmin(ctx);
+  const list = Array.isArray(p.assignments) ? p.assignments : [];
+  if (!list.length) throw bad("저장할 배치가 없습니다");
+  if (list.length > 50) throw bad("한 번에 50건까지만 저장할 수 있습니다");
+
+  const normalized = [];
+  for (const item of list) normalized.push(await normalizeAssignment(db, item));
+
+  const ids = [];
+  const stmts = normalized.map((a) => {
+    const id = crypto.randomUUID();
+    ids.push(id);
+    return db.prepare(
+      `INSERT INTO assignments (id, date, kind, form, role, name, h_explain, h_support, h_research, memo, carry)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(id, a.date, a.kind, a.form, a.role, a.name, a.hE, a.hS, a.hR, a.memo, a.carry);
+  });
+  await db.batch(stmts);
+  await audit(db, ctx, "assignment.createBatch", `${ids.length}건 ${normalized[0].date}`);
+  return { ids };
 }
 
 export async function deleteAssignment(db, ctx, p) {
@@ -308,11 +362,141 @@ export async function setPublished(db, ctx, p) {
   return { ok: true, ym, published: !!published };
 }
 
+/** ===== 수업 교체 =====
+ * 강사가 본인 배치를 다른 강사에게 넘기겠다고 신청하면, 관리자가 승인/거절한다.
+ * 승인 시 배치의 담당 강사가 바뀌고 요청은 completed 가 된다.
+ */
+
+const SWAP_OPEN = "pending_admin";
+
+async function findSwap(db, swapId) {
+  const row = await db.prepare("SELECT * FROM swaps WHERE id = ?").bind(str(swapId, 64)).first();
+  if (!row) throw missing("교체 요청을 찾을 수 없습니다");
+  return row;
+}
+
+export async function createSwap(db, ctx, p) {
+  requireInstructor(ctx);
+  const assignmentId = str(p.assignmentId, 64);
+  const target = str(p.target, 50).trim();
+  if (!assignmentId || !target) throw bad("배치와 넘길 강사를 모두 골라주세요");
+
+  const a = await db.prepare("SELECT id, date, name FROM assignments WHERE id = ?").bind(assignmentId).first();
+  if (!a) throw missing("배치를 찾을 수 없습니다");
+  if (a.name !== ctx.name) throw denied("본인 배치만 교체 신청할 수 있습니다");
+  if (target === ctx.name) throw bad("자기 자신과는 교체할 수 없습니다");
+  await assertAssignable(db, target);
+
+  const ym = String(a.date).slice(0, 7);
+  const m = await db.prepare("SELECT published FROM months WHERE ym = ?").bind(ym).first();
+  if (!m || !m.published) throw bad("확정 활동표가 공개된 뒤에 신청할 수 있습니다");
+
+  // 같은 배치에 이미 대기 중인 요청이 있으면 막는다.
+  const dup = await db.prepare("SELECT id FROM swaps WHERE assignment_id = ? AND status = ?")
+    .bind(assignmentId, SWAP_OPEN).first();
+  if (dup) throw bad("이 배치는 이미 관리자 승인 대기 중입니다");
+
+  const id = crypto.randomUUID();
+  await db.prepare(
+    `INSERT INTO swaps (id, ym, assignment_id, requester, target, status, requested_at, note)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(id, ym, assignmentId, ctx.name, target, SWAP_OPEN, nowIso(), str(p.note, 300)).run();
+  await audit(db, ctx, "swap.create", `${id} ${ctx.name}→${target}`);
+  return { id };
+}
+
+export async function cancelSwap(db, ctx, p) {
+  requireInstructor(ctx);
+  const row = await findSwap(db, p.swapId);
+  if (row.requester !== ctx.name) throw denied("신청자만 취소할 수 있습니다");
+  if (row.status !== SWAP_OPEN) throw bad("이미 처리가 끝난 요청입니다");
+  await db.prepare("UPDATE swaps SET status = 'cancelled', finalized_at = ? WHERE id = ?")
+    .bind(nowIso(), row.id).run();
+  await audit(db, ctx, "swap.cancel", row.id);
+  return { ok: true };
+}
+
+export async function approveSwap(db, ctx, p) {
+  requireAdmin(ctx);
+  const row = await findSwap(db, p.swapId);
+  if (row.status !== SWAP_OPEN) throw bad("대기 중인 요청만 승인할 수 있습니다");
+
+  const a = await db.prepare("SELECT id, name FROM assignments WHERE id = ?").bind(row.assignment_id).first();
+  if (!a) throw missing("원본 배치가 사라졌습니다");
+  // 신청 이후 관리자가 담당을 바꿨을 수 있다. 그대로 승인하면 엉뚱한 사람이 밀려난다.
+  if (a.name !== row.requester) throw bad("원본 배치의 강사가 신청자와 달라졌습니다. 요청을 거절하고 다시 신청받으세요.");
+
+  const at = nowIso();
+  await db.batch([
+    db.prepare("UPDATE assignments SET name = ?, updated_at = ? WHERE id = ?").bind(row.target, at, row.assignment_id),
+    db.prepare("UPDATE swaps SET status = 'completed', responded_at = ?, finalized_at = ? WHERE id = ?").bind(at, at, row.id),
+  ]);
+  await audit(db, ctx, "swap.approve", `${row.id} ${row.requester}→${row.target}`);
+  return { ok: true };
+}
+
+export async function rejectSwap(db, ctx, p) {
+  requireAdmin(ctx);
+  const row = await findSwap(db, p.swapId);
+  if (row.status !== SWAP_OPEN) throw bad("대기 중인 요청만 거절할 수 있습니다");
+  const at = nowIso();
+  await db.prepare("UPDATE swaps SET status = 'rejected', responded_at = ?, finalized_at = ? WHERE id = ?")
+    .bind(at, at, row.id).run();
+  await audit(db, ctx, "swap.reject", row.id);
+  return { ok: true };
+}
+
+/** ===== 학생 프로그램 ===== */
+
+function normalizeProgram(p) {
+  const dateStart = assertDate(p.dateStart);
+  const dateEnd = p.dateEnd ? assertDate(p.dateEnd) : dateStart;
+  if (dateEnd < dateStart) throw bad("종료일이 시작일보다 빠릅니다");
+  const school = str(p.school, 60).trim();
+  if (!school) throw bad("학교(또는 프로그램) 이름은 필수입니다");
+  const students = Math.trunc(num(p.students));
+  if (students < 0 || students > 1000) throw bad("학생 수가 범위를 벗어났습니다");
+  return { dateStart, dateEnd, session: str(p.session, 20), school, students, note: str(p.note, 300) };
+}
+
+export async function createProgram(db, ctx, p) {
+  requireAdmin(ctx);
+  const v = normalizeProgram(p);
+  const id = crypto.randomUUID();
+  await db.prepare(
+    `INSERT INTO programs (id, date_start, date_end, session, school, students, note)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(id, v.dateStart, v.dateEnd, v.session, v.school, v.students, v.note).run();
+  await audit(db, ctx, "program.create", `${v.school} ${v.dateStart}`);
+  return { id };
+}
+
+export async function updateProgram(db, ctx, p) {
+  requireAdmin(ctx);
+  const id = str(p.id, 64);
+  if (!id) throw bad("id 누락");
+  const v = normalizeProgram(p);
+  const res = await db.prepare(
+    `UPDATE programs SET date_start=?, date_end=?, session=?, school=?, students=?, note=? WHERE id = ?`,
+  ).bind(v.dateStart, v.dateEnd, v.session, v.school, v.students, v.note, id).run();
+  if (!res.meta || res.meta.changes === 0) throw missing("프로그램을 찾을 수 없습니다");
+  await audit(db, ctx, "program.update", `${id} ${v.school}`);
+  return { ok: true };
+}
+
+export async function deleteProgram(db, ctx, p) {
+  requireAdmin(ctx);
+  const res = await db.prepare("DELETE FROM programs WHERE id = ?").bind(str(p.id, 64)).run();
+  if (!res.meta || res.meta.changes === 0) throw missing("프로그램을 찾을 수 없습니다");
+  await audit(db, ctx, "program.delete", str(p.id, 64));
+  return { ok: true };
+}
+
 /** ===== 백업 / 마이그레이션 ===== */
 
 export async function exportAll(db, ctx) {
   requireAdmin(ctx);
-  const [ins, adm, set, hol, mon, un, sub, ass] = await db.batch([
+  const [ins, adm, set, hol, mon, un, sub, ass, sw, pr] = await db.batch([
     db.prepare("SELECT * FROM instructors ORDER BY sort_order, name"),
     db.prepare("SELECT * FROM admins ORDER BY email"),
     db.prepare("SELECT * FROM settings ORDER BY key"),
@@ -321,12 +505,14 @@ export async function exportAll(db, ctx) {
     db.prepare("SELECT * FROM unavailable ORDER BY date, name"),
     db.prepare("SELECT * FROM submissions ORDER BY ym, name"),
     db.prepare("SELECT * FROM assignments ORDER BY date, form, role"),
+    db.prepare("SELECT * FROM swaps ORDER BY requested_at"),
+    db.prepare("SELECT * FROM programs ORDER BY date_start, session"),
   ]);
   return {
     exportedAt: nowIso(),
     instructors: rows(ins), admins: rows(adm), settings: rows(set), holidays: rows(hol),
     months: rows(mon), unavailable: rows(un), submissions: rows(sub),
-    assignments: rows(ass),
+    assignments: rows(ass), swaps: rows(sw), programs: rows(pr),
   };
 }
 
@@ -389,15 +575,45 @@ export async function importAll(db, ctx, p) {
     if (!ROLES.includes(role)) throw new Error(`알 수 없는 역할: ${role}`);
     const id = str(r.id, 64) || crypto.randomUUID();
     push("assignments", db.prepare(
-      `INSERT INTO assignments (id, date, kind, form, role, name, h_explain, h_support, h_research, memo, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO assignments (id, date, kind, form, role, name, h_explain, h_support, h_research, memo, carry, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET date=excluded.date, kind=excluded.kind, form=excluded.form,
          role=excluded.role, name=excluded.name, h_explain=excluded.h_explain,
          h_support=excluded.h_support, h_research=excluded.h_research, memo=excluded.memo,
-         updated_at=excluded.updated_at`,
+         carry=excluded.carry, updated_at=excluded.updated_at`,
     ).bind(id, date, kind, form, role, name,
       hours(r.hExplain ?? r.h_explain), hours(r.hSupport ?? r.h_support), hours(r.hResearch ?? r.h_research),
-      str(r.memo, 500), nowIso()));
+      str(r.memo, 500), r.carry === true || r.carry === 1 || String(r.carry).toUpperCase() === "TRUE" ? 1 : 0,
+      nowIso()));
+  }));
+
+  (p.programs || []).forEach((r, i) => guard("programs", i, () => {
+    const dateStart = assertDate(r.dateStart ?? r.date_start);
+    const dateEnd = (r.dateEnd ?? r.date_end) ? assertDate(r.dateEnd ?? r.date_end) : dateStart;
+    const school = str(r.school, 60).trim();
+    if (!school) throw new Error("학교 이름 없음");
+    const id = str(r.id, 64) || crypto.randomUUID();
+    push("programs", db.prepare(
+      `INSERT INTO programs (id, date_start, date_end, session, school, students, note)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET date_start=excluded.date_start, date_end=excluded.date_end,
+         session=excluded.session, school=excluded.school, students=excluded.students, note=excluded.note`,
+    ).bind(id, dateStart, dateEnd, str(r.session, 20), school,
+      Math.trunc(num(r.students)), str(r.note, 300)));
+  }));
+
+  (p.swaps || []).forEach((r, i) => guard("swaps", i, () => {
+    const id = str(r.id, 64);
+    if (!id) throw new Error("id 없음");
+    const ym = assertYm(r.ym);
+    push("swaps", db.prepare(
+      `INSERT INTO swaps (id, ym, assignment_id, requester, target, status, requested_at, responded_at, finalized_at, note)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET status=excluded.status, responded_at=excluded.responded_at,
+         finalized_at=excluded.finalized_at, note=excluded.note`,
+    ).bind(id, ym, str(r.assignmentId ?? r.assignment_id, 64), str(r.requester, 50), str(r.target, 50),
+      str(r.status, 20) || "pending_admin", str(r.requestedAt ?? r.requested_at, 40),
+      str(r.respondedAt ?? r.responded_at, 40), str(r.finalizedAt ?? r.finalized_at, 40), str(r.note, 300)));
   }));
 
   // 구글시트 '설정' 탭은 rate/cap 외에 holiday.* / publish.* / admin.whitelist 가 섞여 있다.

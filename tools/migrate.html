@@ -36,6 +36,7 @@
          onerror="this.onerror=null;this.src='../assets/logo.svg'" />
     <h1>데이터 이관</h1>
     <p class="muted">구글시트에 쌓인 기존 데이터를 전용 데이터베이스로 옮깁니다.<br>
+      강사 · 활동불가일 · 제출현황 · 일정 · 교체요청 · 학생프로그램 · 설정을 모두 가져옵니다.<br>
       같은 데이터를 여러 번 넣어도 중복되지 않으니, 중간에 실패하면 그냥 다시 실행하세요.</p>
   </div>
 
@@ -143,8 +144,10 @@ async function callGas(action, p) {
 
 function summarize(d) {
   const n = (k) => (d[k] || []).length;
-  return `강사 ${n("instructors")} · 근무불가일 ${n("unavailable")} · 제출현황 ${n("submissions")}`
-       + ` · 일정 ${n("assignments")} · 설정 ${n("settings")}`;
+  return `강사 ${n("instructors")} · 활동불가일 ${n("unavailable")} · 제출현황 ${n("submissions")}`
+       + ` · 일정 ${n("assignments")} · 교체요청 ${n("swaps")} · 학생프로그램 ${n("programs")}`
+       + ` · 설정 ${n("settings")}`
+       + (d.sheetId ? `\n  (원본 시트: ${d.sheetId})` : "");
 }
 
 window.onGoogle = async (resp) => {

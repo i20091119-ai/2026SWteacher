@@ -1,88 +1,58 @@
-window.DIAG = { logs: [], result: null, error: null };
-window.dlog = function (s) {
-  const t = new Date().toISOString().substring(11, 19);
-  DIAG.logs.push(`[${t}] ${s}`);
-  const panel = document.getElementById("diagPanel");
-  if (panel) panel.textContent = DIAG.logs.join("\n");
-  console.log("[swt]", s);
-};
-
-window.setStatus = function (kind, msg) {
-  const bar = document.getElementById("statusBar");
-  const text = document.getElementById("statusText");
-  if (!bar) return;
-  bar.classList.remove("loading", "ok", "err");
-  bar.classList.add(kind);
-  text.textContent = msg;
-};
-
 window.App = {
   async boot() {
     Auth.init();
     STATE.restore();
-    setStatus("loading", "서버 연결 중...");
-    document.getElementById("retryBtn").onclick = () => App.bootData();
-    document.getElementById("diagBtn").onclick = () => {
-      document.getElementById("diagPanel").classList.toggle("hidden");
-      App.runHealthCheck();
-    };
-    dlog("API_ENDPOINT: " + APP_CONFIG.API_ENDPOINT);
-    dlog("GOOGLE_CLIENT_ID: " + APP_CONFIG.GOOGLE_CLIENT_ID);
-    await App.bootData();
-    const tryGsi = (n = 0) => {
-      if (window.google && google.accounts) {
-        dlog("GSI 로드 완료, 버튼 렌더");
-        Auth.initGoogle();
-      } else if (n < 40) {
-        setTimeout(() => tryGsi(n + 1), 250);
+    const btnWrap = document.getElementById("instructorButtons");
+    // 캐시 hit → 즉시 표시 (페이지 새로고침 시 강사 목록을 기다리지 않음)
+    const cachedIns = STATE.restoreBootCache();
+    if (cachedIns && cachedIns.length) {
+      Auth.renderInstructorButtons(cachedIns);
+      Ledger.syncRates();
+    } else {
+      btnWrap.innerHTML = '<div class="muted">강사 목록을 불러오는 중...</div>';
+    }
+    // 백그라운드 fresh fetch
+    try {
+      const boot = await API.bootstrap();
+      STATE.instructors = boot.instructors || [];          // 서버가 가나다순으로 정렬해 준다
+      STATE.assignableNames = boot.assignableNames || STATE.instructors;
+      STATE.settings = boot.settings || {};
+      STATE.saveBootCache();
+      if (!STATE.instructors.length) {
+        btnWrap.innerHTML = '<div class="muted">등록된 강사가 없습니다. 관리자에게 문의하세요.</div>';
       } else {
-        dlog("GSI 라이브러리가 로드되지 않음 (광고 차단/네트워크)");
+        Auth.renderInstructorButtons(STATE.instructors);
       }
+      Ledger.syncRates();
+    } catch (e) {
+      console.error("bootstrap 실패", e);
+      if (!cachedIns) {
+        btnWrap.innerHTML =
+          `<div class="muted">데이터를 불러오지 못했습니다: ${e.message}</div>` +
+          `<button type="button" id="retryBoot">다시 시도</button>`;
+        document.getElementById("retryBoot").onclick = () => location.reload();
+      }
+    }
+    // GSI 스크립트 로드 대기 (최대 약 10초)
+    const adminMsg = document.getElementById("adminLoginMsg");
+    adminMsg.textContent = "Google 로그인 준비 중...";
+    let tries = 0;
+    const tryGsi = () => {
+      if (window.google && google.accounts) {
+        adminMsg.textContent = "";
+        Auth.initGoogle();
+        return;
+      }
+      if (++tries > 40) {
+        adminMsg.textContent = "Google 로그인 스크립트를 불러오지 못했습니다. 네트워크/광고 차단을 확인하세요.";
+        return;
+      }
+      setTimeout(tryGsi, 250);
     };
     tryGsi();
     window.addEventListener("hashchange", App.route);
     App.route();
   },
-
-  async bootData() {
-    document.getElementById("retryBtn").classList.add("hidden");
-    setStatus("loading", "강사 명단 불러오는 중...");
-    const t0 = performance.now();
-    try {
-      const boot = await API.bootstrap();
-      const ms = Math.round(performance.now() - t0);
-      dlog(`bootstrap 응답 ${ms}ms: 강사 ${(boot.instructors || []).length}명`);
-      STATE.instructors = boot.instructors || [];
-      STATE.assignableNames = boot.assignableNames || boot.instructors || [];
-      STATE.settings = boot.settings || {};
-      Ledger.syncRates();
-      Auth.renderInstructorButtons(STATE.instructors);
-      if (!STATE.instructors.length) {
-        setStatus("err", "강사 명단이 비어있습니다. seed.sql을 적용했는지 확인하세요.");
-        document.getElementById("retryBtn").classList.remove("hidden");
-      } else {
-        setStatus("ok", `정상 · 강사 ${STATE.instructors.length}명 · ${ms}ms`);
-      }
-    } catch (e) {
-      dlog("bootstrap 실패: " + e.message);
-      setStatus("err", "연결 실패: " + e.message);
-      document.getElementById("instructorButtons").innerHTML =
-        `<div class="muted">데이터를 불러오지 못했습니다.<br>오른쪽 상단 [진단 정보] 버튼을 눌러 로그를 확인하세요.</div>`;
-      document.getElementById("retryBtn").classList.remove("hidden");
-    }
-  },
-
-  async runHealthCheck() {
-    try {
-      const t0 = performance.now();
-      const h = await apiHealth();
-      const ms = Math.round(performance.now() - t0);
-      dlog(`헬스체크 ${ms}ms: ${JSON.stringify(h.data || h)}`);
-    } catch (e) {
-      dlog("헬스체크 실패: " + e.message);
-    }
-  },
-
   route() {
     const hash = location.hash || "#login";
     const topbar = document.getElementById("topbar");
@@ -104,7 +74,4 @@ window.App = {
     }
   },
 };
-window.addEventListener("error", (e) => {
-  dlog("JS 에러: " + (e.error && e.error.message || e.message));
-});
 document.addEventListener("DOMContentLoaded", App.boot);

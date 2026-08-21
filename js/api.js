@@ -1,11 +1,11 @@
 /**
  * 백엔드(Cloudflare Workers + D1) 호출 래퍼.
  *
- * 시트 백엔드 시절과 달라진 점
- *  - 응답이 수십 ms 수준이라 타임아웃을 15초 → 10초로 줄였다.
- *  - 같은 요청이 겹치면 하나로 합친다(중복 클릭 방어).
- *  - 조회 결과를 아주 짧게 캐시해 화면 재렌더가 왕복을 다시 만들지 않게 한다.
- *  - 네트워크 오류는 한 번 자동 재시도한다.
+ * 구글시트(Apps Script) 시절과 달라진 점
+ *  - 응답이 수십 ms 수준이라 타임아웃을 90초 → 10초로 줄였다.
+ *  - 인증은 서버가 발급한 세션 토큰(HMAC 서명)을 Authorization 헤더로 보낸다.
+ *    관리자는 첫 로그인 때만 Google 왕복을 하고, 이후에는 로컬 서명 확인만 한다.
+ *  - 같은 요청이 겹치면 하나로 합치고, 조회 결과는 아주 짧게 캐시한다.
  */
 (function () {
   const inflight = new Map();   // key -> Promise
@@ -25,8 +25,7 @@
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), APP_CONFIG.TIMEOUT_MS || 10000);
     const headers = { "Content-Type": "application/json" };
-    const token = STATE.sessionToken;
-    if (token) headers.Authorization = "Bearer " + token;
+    if (STATE.sessionToken) headers.Authorization = "Bearer " + STATE.sessionToken;
     try {
       const res = await fetch(endpoint() + "/api", {
         method: "POST",
@@ -49,7 +48,7 @@
       }
       return json.data;
     } catch (e) {
-      if (e.name === "AbortError") throw new Error("응답 시간 초과");
+      if (e.name === "AbortError") throw new Error(`응답 시간 초과 (action=${action})`);
       throw e;
     } finally {
       clearTimeout(timer);
@@ -114,16 +113,27 @@
     submitUnavailable: (ym, submitted) => api("submitUnavailable", { ym, submitted }),
 
     saveAssignment: (a) => api("saveAssignment", a),
+    saveAssignmentsBatch: (assignments) => api("saveAssignmentsBatch", { assignments }),
     deleteAssignment: (id) => api("deleteAssignment", { id }),
     setSetting: (key, value) => api("setSetting", { key, value }),
+    setPublished: (ym, published) => api("setPublished", { ym, published }),
+    setHoliday: (date, on, label) => api("setHoliday", { date, on, label }),
     addInstructor: (name) => api("addInstructor", { name }),
     removeInstructor: (name) => api("removeInstructor", { name }),
-    setHoliday: (date, on, label) => api("setHoliday", { date, on, label }),
-    setPublished: (ym, published) => api("setPublished", { ym, published }),
+
+    createSwap: (assignmentId, target, note) => api("createSwap", { assignmentId, target, note }),
+    cancelSwap: (swapId) => api("cancelSwap", { swapId }),
+    approveSwap: (swapId) => api("approveSwap", { swapId }),
+    rejectSwap: (swapId) => api("rejectSwap", { swapId }),
+
+    createProgram: (p) => api("createProgram", p),
+    updateProgram: (p) => api("updateProgram", p),
+    deleteProgram: (id) => api("deleteProgram", { id }),
+
     exportAll: () => api("exportAll"),
   };
 
-  /** 헬스체크 — 진단 배너에서 사용 */
+  /** 헬스체크 — 진단용 */
   window.apiHealth = async function () {
     const res = await fetch(endpoint() + "/health");
     return res.json();

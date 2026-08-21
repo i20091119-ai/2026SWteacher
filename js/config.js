@@ -1,6 +1,6 @@
 // 배포 시 아래 값을 채워 넣으세요. docs/DEPLOY.md 참고.
 window.APP_CONFIG = {
-  // Cloudflare Workers 백엔드 주소 (예: https://swteacher-api.<계정>.workers.dev)
+  // Cloudflare Workers 백엔드 주소
   API_ENDPOINT: (location.hostname === "localhost" || location.hostname === "127.0.0.1")
     ? location.origin                                    // 로컬 미리보기 (tools/dev-server.mjs)
     : "https://swteacher-api.gnmc-swteacher.workers.dev",

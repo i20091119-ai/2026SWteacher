@@ -74,12 +74,44 @@ CREATE TABLE IF NOT EXISTS assignments (
   h_support  REAL NOT NULL DEFAULT 0,
   h_research REAL NOT NULL DEFAULT 0,
   memo       TEXT NOT NULL DEFAULT '',
+  carry      INTEGER NOT NULL DEFAULT 0,   -- 관리자가 손으로 다는 '이월 표시' 플래그(표시 전용)
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
 );
 CREATE INDEX IF NOT EXISTS idx_assignments_date      ON assignments(date);
 CREATE INDEX IF NOT EXISTS idx_assignments_name_date ON assignments(name, date);
 CREATE INDEX IF NOT EXISTS idx_assignments_form_role ON assignments(form, role, date);
+
+-- 수업 교체 요청. 강사가 신청하고 관리자가 승인하면 배치의 담당 강사가 바뀐다.
+CREATE TABLE IF NOT EXISTS swaps (
+  id            TEXT PRIMARY KEY,
+  ym            TEXT NOT NULL,
+  assignment_id TEXT NOT NULL,
+  requester     TEXT NOT NULL,
+  target        TEXT NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'pending_admin',  -- pending_admin / completed / rejected / cancelled
+  requested_at  TEXT NOT NULL DEFAULT '',
+  responded_at  TEXT NOT NULL DEFAULT '',
+  finalized_at  TEXT NOT NULL DEFAULT '',
+  note          TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_swaps_ym         ON swaps(ym);
+-- 같은 배치에 진행 중인 요청이 있는지 한 번에 확인하기 위한 인덱스
+CREATE INDEX IF NOT EXISTS idx_swaps_assignment ON swaps(assignment_id, status);
+
+-- 학생 체험 프로그램 일정. 캘린더에 함께 표시되며 강사·관리자 모두 본다.
+CREATE TABLE IF NOT EXISTS programs (
+  id         TEXT PRIMARY KEY,
+  date_start TEXT NOT NULL,
+  date_end   TEXT NOT NULL,
+  session    TEXT NOT NULL DEFAULT '',   -- 오전 / 오후 / 공란
+  school     TEXT NOT NULL,
+  students   INTEGER NOT NULL DEFAULT 0,
+  note       TEXT NOT NULL DEFAULT ''
+);
+-- 기간이 걸치는 달을 찾기 위해 시작일·종료일 양쪽에 인덱스를 둔다.
+CREATE INDEX IF NOT EXISTS idx_programs_start ON programs(date_start);
+CREATE INDEX IF NOT EXISTS idx_programs_end   ON programs(date_end);
 
 -- 변경 이력. 시트에서는 불가능했던 "누가 언제 무엇을 바꿨나" 추적.
 CREATE TABLE IF NOT EXISTS audit_log (

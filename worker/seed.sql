@@ -2,8 +2,11 @@
 -- 적용: wrangler d1 execute swteacher-db --remote --file=./seed.sql
 -- 이미 값이 있으면 건너뛰도록 전부 INSERT OR IGNORE 를 쓴다 (여러 번 실행해도 안전).
 
-INSERT OR IGNORE INTO instructors (name, sort_order) VALUES
-  ('김경화', 1), ('신미정', 2), ('이경향', 3), ('이수원', 4), ('이윤미', 5);
+INSERT OR IGNORE INTO instructors (name, sort_order, active) VALUES
+  ('김경화', 1, 1), ('신미정', 2, 1), ('이경향', 3, 1),
+  ('이수원', 4, 1), ('이윤미', 5, 1), ('현수진', 6, 1),
+  -- 파견교사. 순번·명단에는 넣지 않고 배치 대상으로만 고를 수 있다.
+  ('이상우', 99, 0);
 
 INSERT OR IGNORE INTO admins (email, note) VALUES
   ('i20091119@gmail.com', '최초 관리자');
@@ -11,7 +14,7 @@ INSERT OR IGNORE INTO admins (email, note) VALUES
 INSERT OR IGNORE INTO settings (key, value) VALUES
   ('rate.explain', '30000'),
   ('rate.other',   '20000'),
-  ('weeklyCap',    '14');
+  ('weeklyCap',    '20');
 
 -- 2026년 한국 공휴일 (대체공휴일 포함).
 -- 운영상 휴관이 아닌 날은 관리자 화면 또는 DELETE 로 제거하면 된다.
