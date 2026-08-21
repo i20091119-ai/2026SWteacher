@@ -1,5 +1,4 @@
 window.Admin = {
-  view: "actual",
   data: null,
 
   async render() {
@@ -7,14 +6,6 @@ window.Admin = {
     const monthInput = document.getElementById("admMonth");
     if (!monthInput.value) monthInput.value = todayYm();
     monthInput.onchange = () => Admin.loadMonth();
-    document.querySelectorAll(".seg button").forEach((b) => {
-      b.onclick = () => {
-        document.querySelectorAll(".seg button").forEach((x) => x.classList.remove("active"));
-        b.classList.add("active");
-        Admin.view = b.dataset.view;
-        Admin.renderViews();
-      };
-    });
     document.getElementById("admPrintBtn").onclick = () => window.print();
     document.getElementById("admFilter").onchange = () => Admin.renderViews();
     await Admin.loadMonth();
@@ -33,7 +24,7 @@ window.Admin = {
       // 명단·설정도 같은 응답에 들어있다 (별도 bootstrap 왕복 없음)
       if (data.instructors) STATE.instructors = data.instructors;
       if (data.assignableNames) STATE.assignableNames = data.assignableNames;
-      if (data.settings) { STATE.settings = data.settings; Ledger.syncRates(); }
+      if (data.settings) { STATE.settings = data.settings; Hours.syncCap(); }
       STATE.saveMonthCache(ym, data);
       Admin._renderAll(ym, data);
       Admin._prefetchNeighbors(ym);
@@ -132,10 +123,6 @@ window.Admin = {
     const unavByDate = {};
     (data.unavails || []).forEach((u) => { (unavByDate[u.date] ||= []).push(u); });
     const programs = data.programs || [];
-    // 실제 뷰: 모든 배치 표시. 장부 뷰: carry=true(이월 표시) 제외
-    const visibleKinds = Admin.view === "ledger"
-      ? (a) => !isTrue(a.carry)
-      : null;
     const grid = Cal.buildGrid(ym, {
       holidays,
       renderDay: (ds, cell) => {
@@ -160,39 +147,21 @@ window.Admin = {
           cell.appendChild(flag);
         }
         let items = (data.assignments || []).filter((a) => a.date === ds);
-        if (visibleKinds) items = items.filter(visibleKinds);
         if (filterName) items = items.filter((a) => a.name === filterName);
         items.forEach((a) => {
           const s = document.createElement("div");
-          let cls = `slot kind-${a.kind.replace(/[()]/g, "")}`;
-          if (isTrue(a.carry)) cls += " carry-flag";
-          s.className = cls;
+          s.className = `slot kind-${Admin.kindClass(a.kind)}`;
           s.dataset.stop = "1";
           const h = Number(a.hExplain || 0) + Number(a.hSupport || 0) + Number(a.hResearch || 0);
-
-          const isCarryKind = (a.kind === "연구이월" || a.kind === "지원이월");
-          const isCarryMarked = isTrue(a.carry);
-          let badge = "";
-          let labelKindShort = a.kind;
-          if (isCarryKind) {
-            badge = '<span class="carry-badge carry-in">⇩ 이월</span> ';
-            labelKindShort = a.kind.replace("이월", "");
-          } else if (isCarryMarked) {
-            badge = '<span class="carry-badge carry-out">↻ 다음달이월</span> ';
-          }
-          const label = labelKindShort + (a.form ? "·" + a.form : "") + (a.role ? "·" + a.role : "");
-          s.innerHTML = `${badge}${label} · ${nameLabel(a.name)} (${h}h)`;
+          const label = a.kind + (a.form ? "·" + a.form : "") + (a.role ? "·" + a.role : "");
+          s.innerHTML = `${label} · ${nameLabel(a.name)} (${h}h)`;
           if (a.memo && String(a.memo).trim()) {
             const m = document.createElement("div");
             m.className = "slot-memo";
             m.textContent = "📝 " + a.memo;
             s.appendChild(m);
+            s.title = "비고: " + a.memo;
           }
-          const tips = [];
-          if (isCarryKind) tips.push("전월에서 이월된 보전 활동");
-          if (isCarryMarked) tips.push("다음 달로 이월 표시된 활동 (당월 장부에서 제외)");
-          if (a.memo) tips.push("비고: " + a.memo);
-          if (tips.length) s.title = tips.join("\n");
           s.onclick = () => Admin.openModal(a);
           cell.appendChild(s);
         });
@@ -216,74 +185,63 @@ window.Admin = {
     const ym = document.getElementById("admMonth").value;
     const data = Admin.data || { assignments: [] };
     const filterName = document.getElementById("admFilter").value;
-    const useLedger = Admin.view === "ledger";
-    const view = useLedger
-      ? Ledger.ledgerView(ym, data.assignments || [])
-      : Ledger.actualView(ym, data.assignments || []);
-    const names = Object.keys(view).filter((n) => !filterName || n === filterName);
-    let html = "";
+    const view = Hours.weeklyView(ym, data.assignments || []);
+    const names = Object.keys(view).filter((n) => !filterName || n === filterName).sort((a, b) => a.localeCompare(b, "ko"));
+    const cap = Hours.capForYm(ym);
+    let html = `<p class="muted" style="margin-bottom:10px">주간 상한: <b>${cap}h</b> — 초과한 주는 빨강으로 표시됩니다.</p>`;
     names.forEach((n) => {
-      const rows = useLedger ? view[n].weeks : view[n];
       html += `<h3>${nameLabel(n)}</h3>`;
-      // 실제 뷰: 이월(연구)/이월(지원) 컬럼 추가. 장부 뷰는 이월이 합계에 포함되므로 별도 컬럼 없음.
-      html += `<table><thead><tr><th>주 시작(일)</th><th>해설</th><th>지원</th><th>연구</th>` +
-        (useLedger ? "" : "<th>이월(연)</th><th>이월(지)</th>") +
-        `<th>합계</th>${useLedger ? "<th>잘린 시수</th>" : "<th>초과</th>"}</tr></thead><tbody>`;
-      rows.forEach((w) => {
-        const tag = useLedger
-          ? (w.cutExplain > 0 ? "warn" : "")
-          : (w.over > 0 ? "warn" : "");
-        const last = useLedger ? w.cutExplain : w.over;
-        const carryCells = useLedger ? "" :
-          `<td>${w.carryResearch || 0}</td><td>${w.carrySupport || 0}</td>`;
-        html += `<tr class="${tag}"><td>${w.wkStart}</td><td>${w.hExplain}</td><td>${w.hSupport}</td><td>${w.hResearch}</td>${carryCells}<td>${w.total}</td><td>${last}</td></tr>`;
+      html += `<table><thead><tr><th>주 시작(일)</th><th>해설</th><th>지원</th><th>연구</th><th>합계</th><th>초과</th></tr></thead><tbody>`;
+      view[n].forEach((w) => {
+        html += `<tr class="${w.over > 0 ? "warn" : ""}">
+          <td>${w.wkStart}</td><td>${fmtH(w.hExplain)}</td><td>${fmtH(w.hSupport)}</td><td>${fmtH(w.hResearch)}</td>
+          <td><b>${fmtH(w.total)}</b></td><td>${w.over > 0 ? `<b>${fmtH(w.over)}h</b>` : "—"}</td>
+        </tr>`;
       });
       html += `</tbody></table>`;
-      if (useLedger) {
-        const t = view[n].totals;
-        html += `<p>월 합계 — 해설 ${t.hExplain}h · 지원 ${t.hSupport}h · 연구 ${t.hResearch}h · 금액 ${t.amount.toLocaleString()}원</p>`;
-      }
     });
-    wrap.innerHTML = html || '<div class="muted">데이터 없음</div>';
+    wrap.innerHTML = html === "" ? '<div class="muted">데이터 없음</div>' : html;
   },
 
   renderSummary() {
     const wrap = document.getElementById("admSummary");
     const ym = document.getElementById("admMonth").value;
-    const data = Admin.data || { assignments: [] };
-    const ass = data.assignments || [];
-    // 월별 유형별 집계
-    const kinds = ["해설", "연구", "지원", "연구이월", "지원이월"];
+    const ass = (Admin.data || { assignments: [] }).assignments || [];
+
+    // 유형별 시수
     const byKind = {};
-    kinds.forEach((k) => (byKind[k] = { h: 0, amt: 0 }));
     ass.forEach((a) => {
       const h = Number(a.hExplain || 0) + Number(a.hSupport || 0) + Number(a.hResearch || 0);
-      if (!byKind[a.kind]) byKind[a.kind] = { h: 0, amt: 0 };
-      byKind[a.kind].h += h;
-      byKind[a.kind].amt += (a.kind === "해설")
-        ? Number(a.hExplain || 0) * Ledger.rateExplain + (Number(a.hSupport || 0) + Number(a.hResearch || 0)) * Ledger.rateOther
-        : (Number(a.hExplain || 0) * Ledger.rateExplain + (Number(a.hSupport || 0) + Number(a.hResearch || 0)) * Ledger.rateOther);
+      byKind[a.kind] = (byKind[a.kind] || 0) + h;
     });
-    let html = `<h3>월별 유형별 집계 (${ym})</h3>`;
-    html += "<table><thead><tr><th>유형</th><th>시수</th><th>금액</th></tr></thead><tbody>";
-    Object.keys(byKind).forEach((k) => {
-      html += `<tr><td>${k}</td><td>${byKind[k].h}</td><td>${byKind[k].amt.toLocaleString()}</td></tr>`;
-    });
-    html += "</tbody></table>";
+    let html = `<h3>유형별 시수 (${ym})</h3>`;
+    const kindNames = Object.keys(byKind).sort();
+    html += kindNames.length
+      ? `<table><thead><tr><th>유형</th><th>시수</th></tr></thead><tbody>${
+          kindNames.map((k) => `<tr><td><span class="slot kind-${Admin.kindClass(k)}">${k}</span></td><td>${fmtH(byKind[k])}h</td></tr>`).join("")
+        }</tbody></table>`
+      : '<div class="muted">배치된 활동이 없습니다.</div>';
 
-    // 강사별 실제 vs 장부 비교
-    const actual = Ledger.actualView(ym, ass);
-    const ledger = Ledger.ledgerView(ym, ass);
-    html += "<h3>강사별 — 실제 vs 장부</h3>";
-    html += "<table><thead><tr><th>강사</th><th>실제 합계(h)</th><th>장부 합계(h)</th><th>장부 금액</th></tr></thead><tbody>";
+    // 강사별 월 합계
+    const totals = Hours.monthTotals(ass);
+    html += "<h3>강사별 월 합계</h3>";
+    html += "<table><thead><tr><th>강사</th><th>해설</th><th>지원</th><th>연구</th><th>합계</th></tr></thead><tbody>";
     STATE.instructors.forEach((n) => {
-      const aSum = (actual[n] || []).reduce((s, w) => s + w.total, 0);
-      const lTot = (ledger[n] && ledger[n].totals) || { hExplain: 0, hSupport: 0, hResearch: 0, amount: 0 };
-      const lSum = lTot.hExplain + lTot.hSupport + lTot.hResearch;
-      html += `<tr><td>${nameLabel(n)}</td><td>${aSum}</td><td>${lSum}</td><td>${lTot.amount.toLocaleString()}</td></tr>`;
+      const t = totals[n] || { hExplain: 0, hSupport: 0, hResearch: 0, total: 0 };
+      html += `<tr><td>${nameLabel(n)}</td><td>${fmtH(t.hExplain)}</td><td>${fmtH(t.hSupport)}</td><td>${fmtH(t.hResearch)}</td><td><b>${fmtH(t.total)}h</b></td></tr>`;
+    });
+    // 명단에 없는 이름(파견교사 등)도 배치가 있으면 함께 보여준다
+    Object.keys(totals).filter((n) => !STATE.instructors.includes(n)).forEach((n) => {
+      const t = totals[n];
+      html += `<tr><td>${nameLabel(n)}</td><td>${fmtH(t.hExplain)}</td><td>${fmtH(t.hSupport)}</td><td>${fmtH(t.hResearch)}</td><td><b>${fmtH(t.total)}h</b></td></tr>`;
     });
     html += "</tbody></table>";
     wrap.innerHTML = html;
+  },
+
+  /** kind 를 CSS 클래스로. 폐지된 이월 유형은 원래 유형 색을 따라간다. */
+  kindClass(kind) {
+    return String(kind || "").replace("이월", "");
   },
 
   openModal(a) {
@@ -292,7 +250,7 @@ window.Admin = {
     const title = document.getElementById("modalTitle");
     const isEdit = !!a.id;
     title.textContent = isEdit ? "배치 편집" : "배치 추가";
-    const kinds = ["해설", "연구", "지원", "연구이월", "지원이월"];
+    const kinds = ["해설", "연구", "지원"];
     const forms = ["", "학교체험", "가족체험", "주말어드벤처"];
     const roles = ["", "주", "보조", "토오전", "토오후", "일오전"];
     const opt = (arr, v) => arr.map((x) => `<option ${x === v ? "selected" : ""} value="${x}">${x || "-"}</option>`).join("");
@@ -328,10 +286,6 @@ window.Admin = {
       ${namesHtml}
       <p class="muted" style="margin-top:8px">형태 선택 시 표준 시수가 자동으로 채워집니다(연구·지원 유형은 직접 입력).</p>
       <label>메모 <input type="text" id="m_memo" value="${a.memo || ""}" style="width:100%"/></label>
-      <label class="checkbox-inline" style="display:flex;align-items:center;gap:8px;margin-top:10px;padding:10px 12px;background:var(--amber-soft);border:1px solid #fde68a;border-radius:8px;cursor:pointer">
-        <input type="checkbox" id="m_carry" ${isTrue(a.carry) ? "checked" : ""} />
-        <span><b>↻ 이월 표시</b> — 이 활동을 다음 달로 이월 (당월 장부/금액에서 제외)</span>
-      </label>
       ${isEdit ? '<p><button type="button" id="m_del" style="color:#c53030">삭제</button></p>' : ""}
     `;
     // form/kind/role 변경 시 표준 시수 자동 적용
@@ -351,7 +305,6 @@ window.Admin = {
         hSupport: Number(document.getElementById("m_hS").value || 0),
         hResearch: Number(document.getElementById("m_hR").value || 0),
         memo: document.getElementById("m_memo").value,
-        carry: document.getElementById("m_carry").checked,
       };
       if (!common.date || !common.kind) { alert("날짜·유형은 필수입니다."); return; }
       try {

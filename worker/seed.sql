@@ -12,9 +12,7 @@ INSERT OR IGNORE INTO admins (email, note) VALUES
   ('i20091119@gmail.com', '최초 관리자');
 
 INSERT OR IGNORE INTO settings (key, value) VALUES
-  ('rate.explain', '30000'),
-  ('rate.other',   '20000'),
-  ('weeklyCap',    '20');
+  ('weeklyCap', '20');
 
 -- 2026년 한국 공휴일 (대체공휴일 포함).
 -- 운영상 휴관이 아닌 날은 관리자 화면 또는 DELETE 로 제거하면 된다.

@@ -4,7 +4,7 @@ window.STATE = {
   sessionToken: null,    // 서버가 발급한 세션 토큰 (HMAC 서명, 12시간)
   instructors: [],       // 가나다순 (순번·명단 기준) — 서버가 정렬해 내려준다
   assignableNames: [],   // 배치 가능한 전체 이름 (순번에 넣지 않는 파견교사 포함)
-  settings: {},          // rate.explain / rate.other / weeklyCap
+  settings: {},          // weeklyCap (주간 상한)
   cache: {
     monthData: {},       // ym -> getMonth 응답
   },
@@ -84,6 +84,12 @@ window.STATE.restoreMonthCache = function (ym) {
     }
   } catch (e) {}
   return null;
+};
+
+// 시수 표기 — 3, 3.5 처럼 필요한 만큼만
+window.fmtH = function (n) {
+  const r = Math.round(Number(n || 0) * 10) / 10;
+  return r % 1 === 0 ? String(r) : r.toFixed(1);
 };
 
 // 한글 가나다 정렬 (기본 localeCompare(ko)로 충분).

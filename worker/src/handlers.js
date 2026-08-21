@@ -7,12 +7,13 @@ import {
 } from "./util.js";
 import { verifyGoogleIdToken, issueSession, requireAdmin, requireInstructor } from "./auth.js";
 
-// 배치 유형.
-// `연구이월` / `지원이월` 은 "지난달에 장부에서 뺀 활동을 이번 달에 보전한다"는 뜻으로,
-// 장부·금액 계산에 실제로 쓰이는 항목이다. 자동 이월 추천 기능은 없앴지만
-// 관리자가 손으로 편성하는 이 유형 자체는 그대로 남는다.
-const KINDS = ["해설", "연구", "지원", "연구이월", "지원이월"];
-const ALL_KINDS = KINDS;
+// 새로 만들 수 있는 배치 유형.
+const KINDS = ["해설", "연구", "지원"];
+// 주당 상한이 14h 이던 시절, 장부 금액을 맞추려고 쓰던 유형.
+// 금액 관리를 하지 않게 되면서 폐지했지만, 시트에서 넘어온 과거 기록은
+// 시수가 사라지지 않도록 그대로 받아들인다(새로 만들 수는 없다).
+const LEGACY_KINDS = ["연구이월", "지원이월"];
+const ALL_KINDS = KINDS.concat(LEGACY_KINDS);
 const FORMS = ["", "학교체험", "가족체험", "주말어드벤처"];
 const ROLES = ["", "주", "보조", "토오전", "토오후", "일오전"];
 
@@ -28,7 +29,6 @@ const mapAssignment = (r) => ({
   hSupport: num(r.h_support),
   hResearch: num(r.h_research),
   memo: r.memo || "",
-  carry: !!r.carry,
 });
 const mapSwap = (r) => ({
   id: r.id, ym: r.ym, assignmentId: r.assignment_id,
@@ -229,7 +229,7 @@ async function normalizeAssignment(db, p) {
   const hS = hours(p.hSupport);
   const hR = hours(p.hResearch);
   if (hE + hS + hR <= 0) throw bad("시수를 하나 이상 입력하세요");
-  return { date, name, kind, form, role, hE, hS, hR, memo: str(p.memo, 500), carry: p.carry ? 1 : 0 };
+  return { date, name, kind, form, role, hE, hS, hR, memo: str(p.memo, 500) };
 }
 
 export async function saveAssignment(db, ctx, p) {
@@ -240,18 +240,18 @@ export async function saveAssignment(db, ctx, p) {
     const id = str(p.id, 64);
     const res = await db.prepare(
       `UPDATE assignments SET date=?, kind=?, form=?, role=?, name=?,
-         h_explain=?, h_support=?, h_research=?, memo=?, carry=?, updated_at=?
+         h_explain=?, h_support=?, h_research=?, memo=?, updated_at=?
        WHERE id = ?`,
-    ).bind(a.date, a.kind, a.form, a.role, a.name, a.hE, a.hS, a.hR, a.memo, a.carry, nowIso(), id).run();
+    ).bind(a.date, a.kind, a.form, a.role, a.name, a.hE, a.hS, a.hR, a.memo, nowIso(), id).run();
     if (!res.meta || res.meta.changes === 0) throw missing("배치를 찾을 수 없습니다: " + id);
     await audit(db, ctx, "assignment.update", `${id} ${a.date} ${a.name}`);
     return { id };
   }
   const id = crypto.randomUUID();
   await db.prepare(
-    `INSERT INTO assignments (id, date, kind, form, role, name, h_explain, h_support, h_research, memo, carry)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).bind(id, a.date, a.kind, a.form, a.role, a.name, a.hE, a.hS, a.hR, a.memo, a.carry).run();
+    `INSERT INTO assignments (id, date, kind, form, role, name, h_explain, h_support, h_research, memo)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(id, a.date, a.kind, a.form, a.role, a.name, a.hE, a.hS, a.hR, a.memo).run();
   await audit(db, ctx, "assignment.create", `${id} ${a.date} ${a.name}`);
   return { id };
 }
@@ -274,9 +274,9 @@ export async function saveAssignmentsBatch(db, ctx, p) {
     const id = crypto.randomUUID();
     ids.push(id);
     return db.prepare(
-      `INSERT INTO assignments (id, date, kind, form, role, name, h_explain, h_support, h_research, memo, carry)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).bind(id, a.date, a.kind, a.form, a.role, a.name, a.hE, a.hS, a.hR, a.memo, a.carry);
+      `INSERT INTO assignments (id, date, kind, form, role, name, h_explain, h_support, h_research, memo)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(id, a.date, a.kind, a.form, a.role, a.name, a.hE, a.hS, a.hR, a.memo);
   });
   await db.batch(stmts);
   await audit(db, ctx, "assignment.createBatch", `${ids.length}건 ${normalized[0].date}`);
@@ -292,7 +292,8 @@ export async function deleteAssignment(db, ctx, p) {
   return { ok: true };
 }
 
-const ALLOWED_SETTINGS = ["rate.explain", "rate.other", "weeklyCap"];
+// 금액 관리를 하지 않으므로 단가 설정은 없앴다. 남은 건 주간 상한뿐.
+const ALLOWED_SETTINGS = ["weeklyCap"];
 
 export async function setSetting(db, ctx, p) {
   requireAdmin(ctx);
@@ -654,6 +655,8 @@ export async function importAll(db, ctx, p) {
       ).bind(key, value, nowIso()));
       return;
     }
+    // 폐지된 단가 설정은 조용히 버린다(오류로 볼 것 없음)
+    if (key.indexOf("rate.") === 0) return;
     errors.push(`settings[${i}]: 알 수 없는 키라 건너뜀 — ${key}`);
   }));
 

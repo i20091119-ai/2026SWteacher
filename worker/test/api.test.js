@@ -79,13 +79,12 @@ describe("bootstrap", () => {
   test("강사 5명을 가나다순으로 준다", async () => {
     const d = await must("bootstrap");
     assert.deepEqual(d.instructors, ["김경화", "신미정", "이경향", "이수원", "이윤미", "현수진"]);
-    assert.equal(d.settings["rate.explain"], "30000");
     assert.equal(d.settings["weeklyCap"], "20");
   });
 
   test("설정에 holiday.* / admin.whitelist 가 섞여 있지 않다", async () => {
     const d = await must("bootstrap");
-    assert.deepEqual(Object.keys(d.settings).sort(), ["rate.explain", "rate.other", "weeklyCap"]);
+    assert.deepEqual(Object.keys(d.settings).sort(), ["weeklyCap"]);
   });
 });
 
@@ -285,13 +284,14 @@ describe("강사 관리", () => {
 
 describe("설정 / 휴관일 / 공개", () => {
   test("허용된 설정만 바꿀 수 있다", async () => {
-    await must("setSetting", { key: "rate.explain", value: "32000" }, { token: adminToken });
+    await must("setSetting", { key: "weeklyCap", value: "18" }, { token: adminToken });
     const d = await must("bootstrap");
-    assert.equal(d.settings["rate.explain"], "32000");
+    assert.equal(d.settings["weeklyCap"], "18");
 
-    const r = await call("setSetting", { key: "admin.whitelist", value: "hacker@example.com" },
-      { token: adminToken });
-    assert.equal(r.ok, false, "화이트리스트를 설정 API 로 건드릴 수 없어야 한다");
+    for (const key of ["admin.whitelist", "rate.explain"]) {
+      const r = await call("setSetting", { key, value: "9" }, { token: adminToken });
+      assert.equal(r.ok, false, `${key} 는 설정 API 로 건드릴 수 없어야 한다`);
+    }
   });
 
   test("숫자가 아닌 설정 값은 거부된다", async () => {
@@ -415,13 +415,18 @@ describe("마이그레이션 (importAll)", () => {
     assert.equal(m.assignments[0].kind, "연구이월");
   });
 
-  test("이월 유형도 관리자가 직접 편성할 수 있다 (장부 보전용)", async () => {
-    const d = await must("saveAssignment",
-      { date: "2026-07-06", kind: "연구이월", name: "김경화", hResearch: 3, memo: "6월 이월분" },
-      { token: adminToken });
-    assert.ok(d.id);
-    const m = await must("getMonth", { ym: "2026-07" });
-    assert.equal(m.assignments.find((a) => a.id === d.id).kind, "연구이월");
+  test("폐지된 이월 유형을 새로 만들 수는 없다", async () => {
+    const r = await call("saveAssignment",
+      { date: "2026-07-06", kind: "연구이월", name: "김경화", hResearch: 3 }, { token: adminToken });
+    assert.equal(r.ok, false);
+    assert.equal(r.status, 400);
+  });
+
+  test("폐지된 단가 설정은 오류 없이 그냥 버려진다", async () => {
+    const d = await must("importAll", {
+      settings: [{ key: "rate.explain", value: "30000" }, { key: "weeklyCap", value: "20" }],
+    }, { token: adminToken });
+    assert.deepEqual(d.errors, []);
   });
 
   test("admin.whitelist 쉼표 목록이 admins 테이블로 흩어진다", async () => {
@@ -674,15 +679,19 @@ describe("배치 일괄 저장", () => {
   });
 });
 
-describe("이월 표시(carry) 플래그", () => {
-  test("저장·조회되며 기본값은 꺼짐", async () => {
-    const A = { date: "2026-06-01", kind: "연구", name: "김경화", hResearch: 3 };
-    const { id } = await must("saveAssignment", A, { token: adminToken });
-    let m = await must("getMonth", { ym: "2026-06" });
-    assert.equal(m.assignments[0].carry, false);
-
-    await must("saveAssignment", { ...A, id, carry: true, memo: "5/11 이월분" }, { token: adminToken });
-    m = await must("getMonth", { ym: "2026-06" });
-    assert.equal(m.assignments[0].carry, true);
+describe("폐지된 이월 기록", () => {
+  test("시트에서 넘어온 이월 행은 시수가 그대로 보존된다", async () => {
+    await must("importAll", {
+      assignments: [{
+        id: "old-carry", date: "2026-06-01", kind: "연구이월",
+        name: "김경화", hResearch: 3, memo: "5/11 이월분", carry: "TRUE",
+      }],
+    }, { token: adminToken });
+    const m = await must("getMonth", { ym: "2026-06" });
+    const a = m.assignments.find((x) => x.id === "old-carry");
+    assert.equal(a.kind, "연구이월");
+    assert.equal(a.hResearch, 3);
+    assert.equal(a.memo, "5/11 이월분");
+    assert.equal(a.carry, undefined, "carry 는 더 이상 API 로 나가지 않는다");
   });
 });

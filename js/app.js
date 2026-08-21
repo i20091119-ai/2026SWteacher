@@ -7,7 +7,7 @@ window.App = {
     const cachedIns = STATE.restoreBootCache();
     if (cachedIns && cachedIns.length) {
       Auth.renderInstructorButtons(cachedIns);
-      Ledger.syncRates();
+      Hours.syncCap();
     } else {
       btnWrap.innerHTML = '<div class="muted">강사 목록을 불러오는 중...</div>';
     }
@@ -23,7 +23,7 @@ window.App = {
       } else {
         Auth.renderInstructorButtons(STATE.instructors);
       }
-      Ledger.syncRates();
+      Hours.syncCap();
     } catch (e) {
       console.error("bootstrap 실패", e);
       if (!cachedIns) {
