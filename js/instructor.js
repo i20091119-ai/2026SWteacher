@@ -1,5 +1,6 @@
 window.Instructor = {
   selectedDate: null,
+  data: null,
   async render() {
     document.getElementById("whoami").textContent = `강사 · ${STATE.user.name}`;
     const monthInput = document.getElementById("insMonth");
@@ -13,10 +14,51 @@ window.Instructor = {
     const ym = document.getElementById("insMonth").value;
     const data = await API.getMonth(ym);
     STATE.cache.monthData[ym] = data;
+    Instructor.data = data;
+    Instructor.paint(ym, data);
+  },
+
+  /** 서버 왕복 없이 현재 데이터로 화면만 다시 그린다. */
+  paint(ym, data) {
     Instructor.renderCalendar(ym, data);
     Instructor.renderUnavailList(data);
     Instructor.renderSubmitState(data);
     Instructor.renderSchedule(ym, data);
+  },
+
+  /**
+   * 근무불가일 토글.
+   * 먼저 화면을 바꾸고 나서 저장한다(낙관적 갱신). 실패하면 되돌린다.
+   * 시트 시절에는 저장이 끝날 때까지 달력이 멈춰 있었다.
+   */
+  async toggleUnavail(ds) {
+    const ym = document.getElementById("insMonth").value;
+    const me = STATE.user.name;
+    const data = Instructor.data;
+    if (!data) return;
+    const before = data.unavails.slice();
+    const beforeSubmits = data.submits;
+    const on = !before.some((u) => u.name === me && u.date === ds);
+    const reason = document.getElementById("insReason").value || "";
+
+    data.unavails = on
+      ? before.concat([{ name: me, date: ds, reason }])
+      : before.filter((u) => !(u.name === me && u.date === ds));
+    // 불가일을 고치면 서버에서 제출 상태가 해제되므로 화면도 같이 맞춘다.
+    data.submits = (data.submits || []).map((s) =>
+      s.name === me ? Object.assign({}, s, { submitted: false, submittedAt: "" }) : s);
+    Instructor.selectedDate = ds;
+    Instructor.paint(ym, data);
+
+    try {
+      await API.saveUnavailable(ds, on, reason);
+      await Instructor.loadMonth();
+    } catch (e) {
+      data.unavails = before;
+      data.submits = beforeSubmits;
+      Instructor.paint(ym, data);
+      alert("저장 실패: " + e.message);
+    }
   },
   renderCalendar(ym, data) {
     const me = STATE.user.name;
@@ -46,18 +88,7 @@ window.Instructor = {
           cell.appendChild(s);
         });
       },
-      onDayClick: async (ds, cell) => {
-        // 토글
-        const on = !mineDates.has(ds);
-        const reason = document.getElementById("insReason").value || "";
-        try {
-          await API.saveUnavailable(ds, on, reason);
-          Instructor.selectedDate = ds;
-          await Instructor.loadMonth();
-        } catch (e) {
-          alert("저장 실패: " + e.message);
-        }
-      },
+      onDayClick: (ds) => Instructor.toggleUnavail(ds),
     });
     wrap.appendChild(grid);
   },
@@ -76,10 +107,7 @@ window.Instructor = {
       li.innerHTML = `<span>${u.date}${u.reason ? " — " + u.reason : ""}</span>`;
       const btn = document.createElement("button");
       btn.type = "button"; btn.textContent = "해제";
-      btn.onclick = async () => {
-        await API.saveUnavailable(u.date, false, "");
-        await Instructor.loadMonth();
-      };
+      btn.onclick = () => Instructor.toggleUnavail(u.date);
       li.appendChild(btn);
       ul.appendChild(li);
     });
@@ -89,13 +117,9 @@ window.Instructor = {
     const me = STATE.user.name;
     const s = (data.submits || []).find((s) => s.ym === ym && s.name === me);
     const el = document.getElementById("insSubmitState");
-    if (s && s.submitted) {
-      el.textContent = `제출 완료 · ${s.submittedAt}`;
-      el.style.color = "var(--ok)";
-    } else {
-      el.textContent = "미제출";
-      el.style.color = "var(--warn)";
-    }
+    const done = !!(s && s.submitted);
+    el.className = "chip " + (done ? "ok" : "warn");
+    el.textContent = done ? `제출 완료 · ${(s.submittedAt || "").replace("T", " ").slice(0, 16)}` : "미제출";
   },
   async submit() {
     const ym = document.getElementById("insMonth").value;
@@ -105,14 +129,15 @@ window.Instructor = {
   renderSchedule(ym, data) {
     const wrap = document.getElementById("insSchedule");
     wrap.innerHTML = "";
-    if (!data.published) { wrap.innerHTML = '<div class="muted">아직 확정 공개 전입니다.</div>'; return; }
+    if (!data.published) { wrap.innerHTML = '<div class="muted">아직 확정 공개 전입니다. 관리자가 공개하면 여기에 표시됩니다.</div>'; return; }
     const tbl = document.createElement("table");
     tbl.innerHTML = "<thead><tr><th>날짜</th><th>유형</th><th>형태</th><th>역할</th><th>강사</th><th>시수</th></tr></thead>";
     const tb = document.createElement("tbody");
     (data.assignments || []).slice().sort((a, b) => a.date.localeCompare(b.date)).forEach((a) => {
       const tr = document.createElement("tr");
       const h = Number(a.hExplain || 0) + Number(a.hSupport || 0) + Number(a.hResearch || 0);
-      tr.innerHTML = `<td>${a.date}</td><td>${a.kind}</td><td>${a.form || "-"}</td><td>${a.role || "-"}</td><td>${a.name}</td><td>${h}</td>`;
+      tr.innerHTML = `<td>${a.date}</td><td><span class="slot kind-${a.kind}">${a.kind}</span></td>` +
+        `<td>${a.form || "-"}</td><td>${a.role || "-"}</td><td>${a.name}</td><td>${h}</td>`;
       tb.appendChild(tr);
     });
     tbl.appendChild(tb);

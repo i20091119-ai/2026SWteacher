@@ -1,0 +1,19 @@
+name = "swteacher-api"
+main = "src/index.js"
+compatibility_date = "2024-11-01"
+
+# D1 데이터베이스 바인딩.
+# `wrangler d1 create swteacher-db` 실행 후 출력된 database_id 를 아래에 붙여넣으세요.
+[[d1_databases]]
+binding = "DB"
+database_name = "swteacher-db"
+database_id = "PASTE_DATABASE_ID_HERE"
+
+[vars]
+# 프론트엔드와 동일한 OAuth 2.0 클라이언트 ID
+GOOGLE_CLIENT_ID = "79888472929-34mqbk6lr9d5b6j7ugmommpie75ak98i.apps.googleusercontent.com"
+# CORS 허용 오리진 (쉼표 구분). 비워두면 모든 오리진을 허용하므로 배포 시 반드시 채우세요.
+ALLOWED_ORIGINS = "https://i20091119-ai.github.io"
+
+# SESSION_SECRET 은 코드에 두지 말고 시크릿으로 등록하세요:
+#   wrangler secret put SESSION_SECRET

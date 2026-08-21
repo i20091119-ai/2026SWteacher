@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>데이터 이관 · 구글시트 → 전용 DB</title>
+<link rel="stylesheet" href="../css/styles.css" />
+<style>
+  #app { max-width: 860px; }
+  .step { counter-increment: step; }
+  .step h2::before {
+    content: counter(step);
+    display: inline-grid; place-items: center;
+    width: 22px; height: 22px; margin-right: 8px;
+    border-radius: 50%; background: var(--brand); color: #fff;
+    font-size: 12px; font-weight: 800;
+  }
+  body { counter-reset: step; }
+  .log {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-all;
+    background: #101823; color: #C9D6E4; border-radius: var(--r);
+    padding: 14px 16px; max-height: 320px; overflow: auto;
+  }
+  textarea {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px; width: 100%; min-height: 120px; resize: vertical;
+    border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 10px;
+  }
+</style>
+</head>
+<body>
+<main id="app">
+  <div class="login-hero">
+    <img class="login-logo" src="../assets/logo.png" alt="경남수학문화관"
+         onerror="this.onerror=null;this.src='../assets/logo.svg'" />
+    <h1>데이터 이관</h1>
+    <p class="muted">구글시트에 쌓인 기존 데이터를 전용 데이터베이스로 옮깁니다.<br>
+      같은 데이터를 여러 번 넣어도 중복되지 않으니, 중간에 실패하면 그냥 다시 실행하세요.</p>
+  </div>
+
+  <div class="card step">
+    <div class="card-head"><h2>관리자 로그인</h2></div>
+    <p class="muted">양쪽(구 시트 · 새 DB) 모두 관리자 권한이 필요합니다.</p>
+    <div id="g_id_signin"></div>
+    <div id="loginMsg" class="muted"></div>
+  </div>
+
+  <div class="card step">
+    <div class="card-head"><h2>주소 확인</h2></div>
+    <label class="field" style="flex-direction:column;align-items:stretch;gap:6px">
+      <span>구 Apps Script 웹앱 주소 (.../exec)</span>
+      <input class="input" id="gasUrl" type="text" placeholder="https://script.google.com/macros/s/.../exec" />
+    </label>
+    <label class="field" style="flex-direction:column;align-items:stretch;gap:6px">
+      <span>새 백엔드 주소 (Cloudflare Workers)</span>
+      <input class="input" id="apiUrl" type="text" placeholder="https://swteacher-api.xxx.workers.dev" />
+    </label>
+  </div>
+
+  <div class="card step">
+    <div class="card-head">
+      <h2>시트에서 데이터 뽑기</h2>
+      <span class="badge">읽기만 합니다</span>
+    </div>
+    <div class="row-inline">
+      <button class="btn btn-primary" id="btnExport" disabled>시트에서 가져오기</button>
+      <span id="exportState" class="chip">대기</span>
+    </div>
+    <details>
+      <summary class="muted">Apps Script 가 응답하지 않으면 — JSON 직접 붙여넣기</summary>
+      <p class="muted">Apps Script 편집기에서 <code>exportAll()</code> 을 실행해 나온 JSON 을 붙여넣어도 됩니다.</p>
+      <textarea id="pasteJson" placeholder='{"instructors":[...],"assignments":[...]}'></textarea>
+      <button class="btn" id="btnPaste">이 JSON 사용</button>
+    </details>
+  </div>
+
+  <div class="card step">
+    <div class="card-head">
+      <h2>새 DB 로 넣기</h2>
+      <span class="badge">먼저 시험 실행으로 확인</span>
+    </div>
+    <div class="row-inline">
+      <button class="btn" id="btnDry" disabled>시험 실행 (쓰지 않음)</button>
+      <button class="btn btn-primary" id="btnImport" disabled>실제로 넣기</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>진행 기록</h2></div>
+    <pre class="log" id="log">준비됨.</pre>
+  </div>
+</main>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="../js/config.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const log = (m) => { $("log").textContent += "\n" + m; $("log").scrollTop = 1e9; };
+
+let idToken = null;      // 구 시트(GAS) 인증용
+let sessionToken = null; // 새 백엔드 인증용
+let payload = null;      // 시트에서 뽑아온 데이터
+
+$("apiUrl").value = (APP_CONFIG.API_ENDPOINT || "").replace(/\/+$/, "");
+
+function setReady() {
+  const authed = !!(idToken && sessionToken);
+  $("btnExport").disabled = !authed || !$("gasUrl").value.trim();
+  $("btnDry").disabled = !(authed && payload);
+  $("btnImport").disabled = !(authed && payload);
+}
+$("gasUrl").addEventListener("input", setReady);
+
+/** 새 백엔드 호출 */
+async function callApi(action, p) {
+  const base = $("apiUrl").value.trim().replace(/\/+$/, "");
+  if (!base) throw new Error("새 백엔드 주소를 입력하세요");
+  const res = await fetch(base + "/api", {
+    method: "POST",
+    headers: Object.assign({ "Content-Type": "application/json" },
+      sessionToken ? { Authorization: "Bearer " + sessionToken } : {}),
+    body: JSON.stringify({ action, payload: p || {} }),
+  });
+  const j = await res.json();
+  if (!j.ok) throw new Error(j.error || ("HTTP " + res.status));
+  return j.data;
+}
+
+/** 구 GAS 호출 — CORS 프리플라이트를 피하려고 text/plain 으로 보낸다 */
+async function callGas(action, p) {
+  const url = $("gasUrl").value.trim();
+  if (!url) throw new Error("Apps Script 주소를 입력하세요");
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ action, payload: p || {}, auth: { role: "admin", idToken } }),
+  });
+  const j = await res.json();
+  if (!j.ok) throw new Error(j.error || ("HTTP " + res.status));
+  return j.data;
+}
+
+function summarize(d) {
+  const n = (k) => (d[k] || []).length;
+  return `강사 ${n("instructors")} · 근무불가일 ${n("unavailable")} · 제출현황 ${n("submissions")}`
+       + ` · 일정 ${n("assignments")} · 설정 ${n("settings")}`;
+}
+
+window.onGoogle = async (resp) => {
+  idToken = resp.credential;
+  $("loginMsg").textContent = "새 백엔드에 인증 중...";
+  try {
+    const d = await callApi("verifyAdmin", { idToken });
+    sessionToken = d.sessionToken;
+    $("loginMsg").textContent = `로그인됨 — ${d.email}`;
+    log("관리자 인증 완료: " + d.email);
+  } catch (e) {
+    $("loginMsg").textContent = "새 백엔드 인증 실패: " + e.message;
+    log("인증 실패: " + e.message);
+  }
+  setReady();
+};
+
+$("btnExport").onclick = async () => {
+  $("exportState").textContent = "가져오는 중...";
+  try {
+    payload = await callGas("exportAll");
+    $("exportState").textContent = "가져옴";
+    $("exportState").className = "chip ok";
+    log("시트에서 가져옴 — " + summarize(payload));
+  } catch (e) {
+    $("exportState").textContent = "실패";
+    $("exportState").className = "chip warn";
+    log("가져오기 실패: " + e.message);
+  }
+  setReady();
+};
+
+$("btnPaste").onclick = () => {
+  try {
+    payload = JSON.parse($("pasteJson").value);
+    $("exportState").textContent = "붙여넣기 사용";
+    $("exportState").className = "chip ok";
+    log("붙여넣은 JSON 사용 — " + summarize(payload));
+  } catch (e) {
+    log("JSON 해석 실패: " + e.message);
+  }
+  setReady();
+};
+
+async function runImport(dryRun) {
+  const btn = dryRun ? $("btnDry") : $("btnImport");
+  btn.disabled = true;
+  try {
+    const d = await callApi("importAll", Object.assign({ dryRun }, payload));
+    log((dryRun ? "[시험 실행] " : "[실제 적재] ") + JSON.stringify(d.counts));
+    if (d.errors && d.errors.length) {
+      log("건너뛴 행 " + d.errors.length + "건:");
+      d.errors.slice(0, 40).forEach((x) => log("  - " + x));
+      if (d.errors.length > 40) log("  ... 외 " + (d.errors.length - 40) + "건");
+    } else {
+      log("건너뛴 행 없음.");
+    }
+    if (!dryRun) log("완료. 앱을 열어 데이터가 보이는지 확인하세요.");
+  } catch (e) {
+    log((dryRun ? "시험 실행" : "적재") + " 실패: " + e.message);
+  }
+  btn.disabled = false;
+}
+$("btnDry").onclick = () => runImport(true);
+$("btnImport").onclick = () => {
+  if (!confirm("새 데이터베이스에 기록합니다. 계속할까요?\n(같은 데이터를 다시 넣어도 중복되지 않습니다)")) return;
+  runImport(false);
+};
+
+(function initGsi(n) {
+  if (window.google && google.accounts) {
+    google.accounts.id.initialize({ client_id: APP_CONFIG.GOOGLE_CLIENT_ID, callback: onGoogle });
+    google.accounts.id.renderButton($("g_id_signin"), { theme: "outline", size: "large", text: "signin_with" });
+  } else if ((n || 0) < 40) {
+    setTimeout(() => initGsi((n || 0) + 1), 250);
+  } else {
+    $("loginMsg").textContent = "Google 로그인 스크립트를 불러오지 못했습니다.";
+  }
+})();
+</script>
+</body>
+</html>

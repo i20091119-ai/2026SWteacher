@@ -1,5 +1,12 @@
 /**
- * 경남수학문화관 SW해설강사 일정 관리 — GAS 백엔드
+ * 경남수학문화관 SW해설강사 일정 관리 — 구(舊) 구글시트 백엔드
+ *
+ * ⚠ 이 백엔드는 더 이상 앱이 사용하지 않습니다.
+ *   앱은 Cloudflare Workers + D1(worker/) 로 옮겨졌습니다.
+ *   이 파일은 **시트에 남아있는 기존 데이터를 새 DB로 옮기기 위해서만** 남겨둡니다.
+ *   - 마이그레이션 절차: docs/MIGRATION.md
+ *   - `exportAll` 액션이 모든 탭을 JSON 으로 덤프합니다.
+ *   옮기고 나면 이 Apps Script 배포는 해제해도 됩니다.
  *
  * 배포: 새 Apps Script 프로젝트 → 이 파일 붙여넣기 → 배포 > 웹앱
  *  - 다음 사용자로 실행: 본인
@@ -81,6 +88,7 @@ function verifyGoogleIdToken(idToken) {
 }
 
 function getAdminWhitelist() {
+  ensureTabsOnce();
   const s = readSettings();
   const raw = String(s["admin.whitelist"] || "i20091119@gmail.com");
   return raw.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
@@ -128,8 +136,19 @@ function dispatch(action, p, ctx) {
       if (ctx.role !== "admin") throw new Error("관리자 인증 필요");
       return withLock(() => removeInstructor(p.name));
     }
+    case "exportAll": {
+      if (ctx.role !== "admin") throw new Error("관리자 인증 필요");
+      return exportAll();
+    }
     default: throw new Error("알 수 없는 action: " + action);
   }
+}
+
+let __tabsReady = false;
+function ensureTabsOnce() {
+  if (__tabsReady) return;
+  ensureTabs();
+  __tabsReady = true;
 }
 
 function withLock(fn) {
@@ -225,18 +244,16 @@ function seedDefaultsIfEmpty() {
 }
 
 function readSettings() {
-  ensureTabs_safe();
-  const rows = readAll(getSheet(TABS.settings));
+  // 주의: 여기서 ensureTabs() 를 부르면 ensureTabs → seedDefaultsIfEmpty → readSettings 로
+  // 무한 재귀가 생긴다(예전 버전의 성능 문제 원인). 탭 보장은 호출부에서 한 번만 한다.
+  const rows = readAll(getSheet(TABS.settings, ["key", "value"]));
   const obj = {};
   rows.forEach((r) => { obj[String(r.key)] = r.value; });
   return obj;
 }
-function ensureTabs_safe() {
-  try { ensureTabs(); } catch (e) { /* 초기 1회 무시 */ }
-}
 
 function bootstrap() {
-  ensureTabs();
+  ensureTabsOnce();
   const instructors = readAll(getSheet(TABS.instructors))
     .map((r) => String(r.name))
     .filter(Boolean)
@@ -245,7 +262,7 @@ function bootstrap() {
 }
 
 function getMonth(ym) {
-  ensureTabs();
+  ensureTabsOnce();
   if (!ym) throw new Error("ym 누락");
   const inMonth = (d) => String(d).slice(0, 7) === ym;
   const assignments = readAll(getSheet(TABS.schedule))
@@ -280,7 +297,7 @@ function getMonth(ym) {
 }
 
 function getCarryover(ym) {
-  ensureTabs();
+  ensureTabsOnce();
   return readAll(getSheet(TABS.carryover)).filter((r) => String(r.srcYm) === ym);
 }
 
@@ -386,4 +403,57 @@ function setSetting(key, value) {
   if (idx === -1) sh.appendRow([key, value]);
   else sh.getRange(rows[idx].__row, 1, 1, 2).setValues([[key, value]]);
   return { ok: true };
+}
+
+
+/**
+ * 모든 탭을 새 백엔드의 importAll 이 받는 모양으로 덤프한다.
+ * 마이그레이션 전용 (docs/MIGRATION.md).
+ */
+function exportAll() {
+  ensureTabsOnce();
+  const ins = readAll(getSheet(TABS.instructors))
+    .map(function (r) { return { name: String(r.name || "").trim(), order: Number(r.order || 0) }; })
+    .filter(function (r) { return r.name; });
+
+  const unavailable = readAll(getSheet(TABS.unavail)).map(function (r) {
+    return { name: String(r.name || "").trim(), date: toDateStr(r.date), reason: String(r.reason || "") };
+  }).filter(function (r) { return r.name && r.date; });
+
+  const submissions = readAll(getSheet(TABS.submit)).map(function (r) {
+    return {
+      ym: String(r.ym || ""),
+      name: String(r.name || "").trim(),
+      submitted: r.submitted === true || String(r.submitted).toUpperCase() === "TRUE",
+      submittedAt: String(r.submittedAt || ""),
+    };
+  }).filter(function (r) { return r.ym && r.name; });
+
+  const assignments = readAll(getSheet(TABS.schedule)).map(function (r) {
+    return {
+      id: String(r.id || ""),
+      date: toDateStr(r.date),
+      kind: String(r.kind || ""),
+      form: String(r.form || ""),
+      role: String(r.role || ""),
+      name: String(r.name || "").trim(),
+      hExplain: Number(r.hExplain || 0),
+      hSupport: Number(r.hSupport || 0),
+      hResearch: Number(r.hResearch || 0),
+      memo: String(r.memo || ""),
+    };
+  }).filter(function (r) { return r.date && r.name; });
+
+  const settings = readAll(getSheet(TABS.settings)).map(function (r) {
+    return { key: String(r.key || ""), value: String(r.value === undefined ? "" : r.value) };
+  }).filter(function (r) { return r.key; });
+
+  return {
+    exportedAt: new Date().toISOString(),
+    instructors: ins,
+    unavailable: unavailable,
+    submissions: submissions,
+    assignments: assignments,
+    settings: settings,
+  };
 }

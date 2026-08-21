@@ -1,27 +1,39 @@
 // 전역 상태(브라우저 메모리). 새로고침 시 sessionStorage로 복원.
 window.STATE = {
-  user: null,            // { role:'instructor'|'admin', name?:string, email?:string, idToken?:string }
-  instructors: [],       // ['김경화','신미정','이경향','이윤미']  (가나다순으로 정렬해 저장)
-  settings: {},          // 시트 '설정' 키-값
+  user: null,            // { role:'instructor'|'admin', name?:string, email?:string }
+  sessionToken: null,    // 서버가 발급한 세션 토큰 (HMAC 서명, 12시간)
+  instructors: [],       // 가나다순 (순번 계산 기준) — 서버가 정렬해 내려준다
+  assignableNames: [],   // 배치 가능한 전체 이름 (순번에 넣지 않는 파견교사 포함)
+  settings: {},          // rate.explain / rate.other / weeklyCap
   cache: {
-    monthData: {},       // ym -> {assignments, unavails, submits, holidays, seeds, carryovers}
+    monthData: {},       // ym -> getMonth 응답
   },
 };
 
+const SESSION_KEY = "swt_session";
+
 window.STATE.save = function () {
   try {
-    sessionStorage.setItem("swt_user", JSON.stringify(STATE.user));
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify({
+      user: STATE.user,
+      sessionToken: STATE.sessionToken,
+    }));
   } catch (e) {}
 };
 window.STATE.restore = function () {
   try {
-    const u = sessionStorage.getItem("swt_user");
-    if (u) STATE.user = JSON.parse(u);
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    if (!raw) return;
+    const s = JSON.parse(raw);
+    STATE.user = s.user || null;
+    STATE.sessionToken = s.sessionToken || null;
   } catch (e) {}
 };
 window.STATE.clear = function () {
   STATE.user = null;
-  try { sessionStorage.removeItem("swt_user"); } catch (e) {}
+  STATE.sessionToken = null;
+  try { sessionStorage.removeItem(SESSION_KEY); } catch (e) {}
+  if (window.api && api.clearCache) api.clearCache();
 };
 
 // 한글 가나다 정렬 (기본 localeCompare(ko)로 충분).

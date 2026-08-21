@@ -20,12 +20,13 @@ window.App = {
   async boot() {
     Auth.init();
     STATE.restore();
-    setStatus("loading", "GAS 연결 중...");
+    setStatus("loading", "서버 연결 중...");
     document.getElementById("retryBtn").onclick = () => App.bootData();
     document.getElementById("diagBtn").onclick = () => {
       document.getElementById("diagPanel").classList.toggle("hidden");
+      App.runHealthCheck();
     };
-    dlog("GAS_ENDPOINT: " + APP_CONFIG.GAS_ENDPOINT);
+    dlog("API_ENDPOINT: " + APP_CONFIG.API_ENDPOINT);
     dlog("GOOGLE_CLIENT_ID: " + APP_CONFIG.GOOGLE_CLIENT_ID);
     await App.bootData();
     const tryGsi = (n = 0) => {
@@ -46,22 +47,21 @@ window.App = {
   async bootData() {
     document.getElementById("retryBtn").classList.add("hidden");
     setStatus("loading", "강사 명단 불러오는 중...");
-    dlog("bootstrap 요청 시작");
+    const t0 = performance.now();
     try {
-      const boot = await Promise.race([
-        API.bootstrap(),
-        new Promise((_, rej) => setTimeout(() => rej(new Error("응답 시간 초과 (15초)")), 15000)),
-      ]);
-      dlog("bootstrap 응답: " + JSON.stringify(boot));
-      STATE.instructors = sortKo(boot.instructors || []);
+      const boot = await API.bootstrap();
+      const ms = Math.round(performance.now() - t0);
+      dlog(`bootstrap 응답 ${ms}ms: 강사 ${(boot.instructors || []).length}명`);
+      STATE.instructors = boot.instructors || [];
+      STATE.assignableNames = boot.assignableNames || boot.instructors || [];
       STATE.settings = boot.settings || {};
-      Auth.renderInstructorButtons(STATE.instructors);
       Ledger.syncRates();
+      Auth.renderInstructorButtons(STATE.instructors);
       if (!STATE.instructors.length) {
-        setStatus("err", "강사 명단이 비어있습니다. 시트 `강사` 탭에 5명이 자동 시드되지 않은 상태입니다.");
+        setStatus("err", "강사 명단이 비어있습니다. seed.sql을 적용했는지 확인하세요.");
         document.getElementById("retryBtn").classList.remove("hidden");
       } else {
-        setStatus("ok", `정상 · 강사 ${STATE.instructors.length}명 로드됨`);
+        setStatus("ok", `정상 · 강사 ${STATE.instructors.length}명 · ${ms}ms`);
       }
     } catch (e) {
       dlog("bootstrap 실패: " + e.message);
@@ -69,6 +69,17 @@ window.App = {
       document.getElementById("instructorButtons").innerHTML =
         `<div class="muted">데이터를 불러오지 못했습니다.<br>오른쪽 상단 [진단 정보] 버튼을 눌러 로그를 확인하세요.</div>`;
       document.getElementById("retryBtn").classList.remove("hidden");
+    }
+  },
+
+  async runHealthCheck() {
+    try {
+      const t0 = performance.now();
+      const h = await apiHealth();
+      const ms = Math.round(performance.now() - t0);
+      dlog(`헬스체크 ${ms}ms: ${JSON.stringify(h.data || h)}`);
+    } catch (e) {
+      dlog("헬스체크 실패: " + e.message);
     }
   },
 

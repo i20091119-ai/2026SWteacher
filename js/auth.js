@@ -7,22 +7,34 @@ window.Auth = {
       location.reload();
     });
   },
+
   renderInstructorButtons(names) {
     const wrap = document.getElementById("instructorButtons");
     wrap.innerHTML = "";
-    sortKo(names).forEach((n) => {
+    names.forEach((n) => {
       const b = document.createElement("button");
       b.type = "button";
       b.textContent = n;
-      b.addEventListener("click", () => {
-        STATE.user = { role: "instructor", name: n };
-        STATE.save();
-        location.hash = "#instructor";
-        App.route();
+      b.addEventListener("click", async () => {
+        b.disabled = true;
+        try {
+          // 이름이 실제 명단에 있는지 서버가 확인하고 세션 토큰을 발급한다.
+          const d = await API.loginInstructor(n);
+          STATE.user = { role: "instructor", name: d.name };
+          STATE.sessionToken = d.sessionToken;
+          STATE.save();
+          location.hash = "#instructor";
+          App.route();
+        } catch (e) {
+          alert("로그인 실패: " + e.message);
+        } finally {
+          b.disabled = false;
+        }
       });
       wrap.appendChild(b);
     });
   },
+
   initGoogle() {
     if (!window.google || !google.accounts) return;
     if (!APP_CONFIG.GOOGLE_CLIENT_ID || APP_CONFIG.GOOGLE_CLIENT_ID.includes("REPLACE_ME")) {
@@ -40,15 +52,16 @@ window.Auth = {
       text: "signin_with",
     });
   },
+
   async onGoogleCredential(resp) {
-    const idToken = resp.credential;
     const msg = document.getElementById("adminLoginMsg");
     msg.textContent = "관리자 인증 중...";
     try {
-      // 토큰을 임시 user에 담아 서버에 검증 요청
-      STATE.user = { role: "admin", idToken };
-      const data = await api("verifyAdmin", {});
-      STATE.user = { role: "admin", email: data.email, idToken };
+      // 서버가 Google ID 토큰의 서명을 직접 검증한 뒤 자체 세션 토큰을 발급한다.
+      // 이후 요청은 Google 왕복 없이 로컬 서명 확인만 거친다.
+      const d = await API.verifyAdmin(resp.credential);
+      STATE.user = { role: "admin", email: d.email };
+      STATE.sessionToken = d.sessionToken;
       STATE.save();
       msg.textContent = "";
       location.hash = "#admin";

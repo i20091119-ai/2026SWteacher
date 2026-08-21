@@ -30,29 +30,28 @@ window.Ledger = {
     return map;
   },
 
-  // 실제 근무 뷰: 합산 그대로, 14h 초과 주 빨강 표시 + 초과시수 계산
+  // 실제 근무 뷰: 합산 그대로, 주 상한(기본 14h) 초과 주를 빨강 표시.
   actualView(ym, assignments) {
     const weeks = Ledger.weeksOf(ym, assignments);
     const out = {}; // name -> [{wkStart, total, over, hExplain, hSupport, hResearch}]
     Object.keys(weeks).forEach((name) => {
-      out[name] = [];
-      const ws = Object.keys(weeks[name]).sort();
-      ws.forEach((wk) => {
+      out[name] = Object.keys(weeks[name]).sort().map((wk) => {
         const w = weeks[name][wk];
-        // 이월 항목은 실제 뷰에서 제외
-        const itemsReal = w.items.filter((it) => it.kind !== "연구이월" && it.kind !== "지원이월");
-        const hE = itemsReal.reduce((s, it) => s + Number(it.hExplain || 0), 0);
-        const hS = itemsReal.reduce((s, it) => s + Number(it.hSupport || 0), 0);
-        const hR = itemsReal.reduce((s, it) => s + Number(it.hResearch || 0), 0);
-        const total = hE + hS + hR;
-        const over = Math.max(0, total - Ledger.CAP);
-        out[name].push({ wkStart: wk, total, over, hExplain: hE, hSupport: hS, hResearch: hR });
+        const total = w.hExplain + w.hSupport + w.hResearch;
+        return {
+          wkStart: wk,
+          total,
+          over: Math.max(0, total - Ledger.CAP),
+          hExplain: w.hExplain,
+          hSupport: w.hSupport,
+          hResearch: w.hResearch,
+        };
       });
     });
     return out;
   },
 
-  // 장부 뷰: 연구·지원 우선 포함, 해설은 주합계 ≤ 14h가 되도록 상한 처리. 이월 항목 포함.
+  // 장부 뷰: 연구·지원을 먼저 채우고, 해설은 주합계가 상한(기본 14h)을 넘지 않도록 잘라낸다.
   ledgerView(ym, assignments) {
     Ledger.syncRates();
     const weeks = Ledger.weeksOf(ym, assignments);
@@ -63,8 +62,8 @@ window.Ledger = {
       let totalE = 0, totalS = 0, totalR = 0;
       ws.forEach((wk) => {
         const w = weeks[name][wk];
-        // 연구·지원(이월 포함)을 먼저 누적
-        const otherH = w.hSupport + w.hResearch; // 이월도 hSupport/hResearch에 들어감
+        // 연구·지원을 먼저 누적
+        const otherH = w.hSupport + w.hResearch;
         const explainCap = Math.max(0, Ledger.CAP - otherH);
         const cappedExplain = Math.min(w.hExplain, explainCap);
         const cutExplain = Math.max(0, w.hExplain - cappedExplain);
@@ -75,7 +74,7 @@ window.Ledger = {
           hSupport: w.hSupport,
           hResearch: w.hResearch,
           total: sum,
-          cutExplain, // 잘려나간 해설 (이월 대상)
+          cutExplain, // 상한에 걸려 장부에 못 올린 해설
         });
         totalE += cappedExplain;
         totalS += w.hSupport;

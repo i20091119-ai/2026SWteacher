@@ -1,0 +1,19 @@
+{
+  "name": "swteacher-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:create": "wrangler d1 create swteacher-db",
+    "db:schema": "wrangler d1 execute swteacher-db --remote --file=./schema.sql",
+    "db:seed": "wrangler d1 execute swteacher-db --remote --file=./seed.sql",
+    "db:schema:local": "wrangler d1 execute swteacher-db --local --file=./schema.sql",
+    "db:seed:local": "wrangler d1 execute swteacher-db --local --file=./seed.sql",
+    "test": "node --test test/*.test.js"
+  },
+  "devDependencies": {
+    "wrangler": "^3.90.0"
+  }
+}

@@ -55,7 +55,7 @@ window.Admin = {
   },
 
   async removeInstructor(name) {
-    if (!confirm(`'${name}' 강사를 삭제하시겠습니까?\n기존 배치/불가일 데이터는 시트에 그대로 남습니다.`)) return;
+    if (!confirm(`'${name}' 강사를 명단에서 내리시겠습니까?\n순번·명단에서는 즉시 빠지고, 지난 배치와 장부 기록은 그대로 보존됩니다.`)) return;
     try {
       await API.removeInstructor(name);
       await Admin.refreshAll();
@@ -65,8 +65,10 @@ window.Admin = {
   async refreshAll() {
     setStatus("loading", "강사 명단 다시 불러오는 중...");
     try {
+      api.clearCache();
       const boot = await API.bootstrap();
-      STATE.instructors = sortKo(boot.instructors || []);
+      STATE.instructors = boot.instructors || [];
+      STATE.assignableNames = boot.assignableNames || STATE.instructors;
       STATE.settings = boot.settings || {};
       Ledger.syncRates();
       Auth.renderInstructorButtons(STATE.instructors);
@@ -80,17 +82,51 @@ window.Admin = {
 
   async loadMonth() {
     const ym = document.getElementById("admMonth").value;
-    const data = await API.getMonth(ym);
+    // 당월 + 전월 배치 + 명단 + 설정을 한 번에 받는다. (예전에는 getMonth 를 두 번 호출했다)
+    const data = await API.getAdminMonth(ym);
     Admin.data = data;
     STATE.cache.monthData[ym] = data;
+    STATE.instructors = data.instructors || STATE.instructors;
+    STATE.assignableNames = data.assignableNames || STATE.instructors;
+    STATE.settings = data.settings || STATE.settings;
+    Ledger.syncRates();
+
     // 강사 필터
     const sel = document.getElementById("admFilter");
+    const keep = sel.value;
     sel.innerHTML = '<option value="">전체</option>' +
       STATE.instructors.map((n) => `<option>${n}</option>`).join("");
+    if (keep && STATE.instructors.includes(keep)) sel.value = keep;
+
+    Admin.renderInstructorsCard();
     Admin.renderSubmit(data);
-    await Admin.renderCarryover(ym);
-    Admin.renderNextUp(ym, data);
+    Admin.renderPublish(ym, data);
     Admin.renderViews();
+  },
+
+  /** 확정 근무표 공개 토글 — 강사 화면의 '확정 근무표'가 이 값에 따라 보인다. */
+  renderPublish(ym, data) {
+    const el = document.getElementById("admPublish");
+    if (!el) return;
+    el.innerHTML = `
+      <label class="publish-row">
+        <input type="checkbox" id="admPublishChk" ${data.published ? "checked" : ""} />
+        <span>${ym} 확정 근무표를 강사에게 공개</span>
+      </label>
+      <span class="muted">${data.published ? "공개 중" : "비공개 (강사 화면에 표시되지 않음)"}</span>`;
+    document.getElementById("admPublishChk").onchange = async (e) => {
+      const on = e.target.checked;
+      e.target.disabled = true;
+      try {
+        await API.setPublished(ym, on);
+        await Admin.loadMonth();
+      } catch (err) {
+        alert("변경 실패: " + err.message);
+        e.target.checked = !on;
+      } finally {
+        e.target.disabled = false;
+      }
+    };
   },
 
   renderSubmit(data) {
@@ -104,74 +140,6 @@ window.Admin = {
     }).join("");
     tbl.innerHTML = `<thead><tr><th>강사</th><th>제출 여부</th><th>제출 일시</th></tr></thead><tbody>${rows}</tbody>` +
       (allSubmitted ? '<caption class="ok">전원 제출 · 편성 가능</caption>' : '<caption class="warn">미제출자 있음</caption>');
-  },
-
-  async renderCarryover(ym) {
-    const target = document.getElementById("admCarryover");
-    const prev = prevYm(ym);
-    try {
-      const prevData = await API.getMonth(prev);
-      const co = Carryover.computeFromMonth(prev, prevData.assignments || []);
-      const names = Object.keys(co);
-      if (!names.length) {
-        target.innerHTML = `<div class="muted">${prev} 기준 이월 대상이 없습니다.</div>`;
-        return;
-      }
-      target.innerHTML = `<table><thead><tr><th>강사</th><th>해설 초과(h)</th><th>보전 금액</th><th>이월 권장(h, ×1.5)</th></tr></thead><tbody>${
-        names.map((n) => {
-          const r = co[n];
-          return `<tr><td>${n}</td><td>${r.overflowExplainH}</td><td>${r.compensationAmount.toLocaleString()}</td><td>${r.recommendedH}</td></tr>`;
-        }).join("")
-      }</tbody></table>`;
-    } catch (e) {
-      target.innerHTML = `<div class="muted">전월(${prev}) 데이터 로드 실패: ${e.message}</div>`;
-    }
-  },
-
-  renderNextUp(ym, data) {
-    const target = document.getElementById("admNextUp");
-    const ins = STATE.instructors;
-    // 시드 포인터: seeds[kind] (0~3)
-    const seedFamily = (data.seeds || []).find((s) => s.ym === ym && s.kind === "가족체험");
-    const seedWeekend = (data.seeds || []).find((s) => s.ym === ym && s.kind === "주말어드벤처");
-    const sF = seedFamily ? Number(seedFamily.pointer) : 0;
-    const sW = seedWeekend ? Number(seedWeekend.pointer) : 0;
-    const fam = Rotation.nextFamily(ym, ins, sF, data.assignments || [], {});
-    const wk = Rotation.nextWeekend(ym, ins, sW, data.assignments || []);
-    target.innerHTML = `
-      <div class="grid-2">
-        <div>
-          <h3>가족체험SW · 다음 회차</h3>
-          <p>주강사: <b>${fam.main}</b>${fam.main === "이상우" ? `<span class="muted"> (내부 순번: ${fam.mainInternal})</span>` : ""}<br>
-          보조강사: <b>${fam.sub}</b><br>
-          <span class="muted">현재 ${ym} 가족체험 편성 회차: ${fam.placedCount} · 다음 회차 후 포인터: ${fam.nextPointerAfter}</span></p>
-          <label>가족체험 시작 포인터(이 달):
-            <input type="number" min="0" max="3" value="${sF}" id="seedFamily" />
-          </label>
-          <button type="button" id="seedFamilySave">저장</button>
-        </div>
-        <div>
-          <h3>주말어드벤처 · 다음 묶음</h3>
-          <ul>${wk.slots.map((s) => `<li>${s.role}: <b>${s.name}</b></li>`).join("")}</ul>
-          <span class="muted">현재 ${ym} 주말어드벤처 편성 묶음: ${wk.placedBundles} · 묶음 후 포인터: ${wk.nextPointerAfter}</span><br>
-          <label>주말어드벤처 시작 포인터(이 달):
-            <input type="number" min="0" max="3" value="${sW}" id="seedWeekend" />
-          </label>
-          <button type="button" id="seedWeekendSave">저장</button>
-        </div>
-      </div>
-      <p class="muted">자동 배치는 하지 않습니다. 캘린더에서 직접 배치하세요.</p>
-    `;
-    document.getElementById("seedFamilySave").onclick = async () => {
-      const v = Number(document.getElementById("seedFamily").value);
-      await API.setSeed(ym, "가족체험", v);
-      await Admin.loadMonth();
-    };
-    document.getElementById("seedWeekendSave").onclick = async () => {
-      const v = Number(document.getElementById("seedWeekend").value);
-      await API.setSeed(ym, "주말어드벤처", v);
-      await Admin.loadMonth();
-    };
   },
 
   renderViews() {
@@ -189,9 +157,6 @@ window.Admin = {
     const holidays = new Set(data.holidays || []);
     const unavByDate = {};
     (data.unavails || []).forEach((u) => { (unavByDate[u.date] ||= []).push(u); });
-    const visibleKinds = Admin.view === "ledger"
-      ? null  // 장부 뷰는 모든 항목 표시
-      : (a) => a.kind !== "연구이월" && a.kind !== "지원이월";
     const grid = Cal.buildGrid(ym, {
       holidays,
       renderDay: (ds, cell) => {
@@ -202,11 +167,10 @@ window.Admin = {
           cell.appendChild(flag);
         }
         let items = (data.assignments || []).filter((a) => a.date === ds);
-        if (visibleKinds) items = items.filter(visibleKinds);
         if (filterName) items = items.filter((a) => a.name === filterName);
         items.forEach((a) => {
           const s = document.createElement("div");
-          s.className = `slot kind-${a.kind.replace(/[()]/g, "")}`;
+          s.className = `slot kind-${a.kind}`;
           s.dataset.stop = "1";
           s.textContent = `${Admin.labelOf(a)} · ${a.name} (${Number(a.hExplain || 0) + Number(a.hSupport || 0) + Number(a.hResearch || 0)}h)`;
           s.onclick = () => Admin.openModal(a);
@@ -241,7 +205,7 @@ window.Admin = {
     names.forEach((n) => {
       const rows = useLedger ? view[n].weeks : view[n];
       html += `<h3>${n}</h3>`;
-      html += `<table><thead><tr><th>주 시작(일)</th><th>해설</th><th>지원</th><th>연구</th><th>합계</th>${useLedger ? "<th>잘린 해설</th>" : "<th>초과</th>"}</tr></thead><tbody>`;
+      html += `<table><thead><tr><th>주 시작(일)</th><th>해설</th><th>지원</th><th>연구</th><th>합계</th>${useLedger ? "<th>장부 밖 해설</th>" : "<th>초과</th>"}</tr></thead><tbody>`;
       rows.forEach((w) => {
         const tag = useLedger
           ? (w.cutExplain > 0 ? "warn" : "")
@@ -264,7 +228,7 @@ window.Admin = {
     const data = Admin.data || { assignments: [] };
     const ass = data.assignments || [];
     // 월별 유형별 집계
-    const kinds = ["해설", "연구", "지원", "연구이월", "지원이월"];
+    const kinds = ["해설", "연구", "지원"];
     const byKind = {};
     kinds.forEach((k) => (byKind[k] = { h: 0, amt: 0 }));
     ass.forEach((a) => {
@@ -278,7 +242,7 @@ window.Admin = {
     let html = `<h3>월별 유형별 집계 (${ym})</h3>`;
     html += "<table><thead><tr><th>유형</th><th>시수</th><th>금액</th></tr></thead><tbody>";
     Object.keys(byKind).forEach((k) => {
-      html += `<tr><td>${k}</td><td>${byKind[k].h}</td><td>${byKind[k].amt.toLocaleString()}</td></tr>`;
+      html += `<tr><td><span class="slot kind-${k}">${k}</span></td><td>${byKind[k].h}</td><td>${byKind[k].amt.toLocaleString()}원</td></tr>`;
     });
     html += "</tbody></table>";
 
@@ -291,7 +255,7 @@ window.Admin = {
       const aSum = (actual[n] || []).reduce((s, w) => s + w.total, 0);
       const lTot = (ledger[n] && ledger[n].totals) || { hExplain: 0, hSupport: 0, hResearch: 0, amount: 0 };
       const lSum = lTot.hExplain + lTot.hSupport + lTot.hResearch;
-      html += `<tr><td>${n}</td><td>${aSum}</td><td>${lSum}</td><td>${lTot.amount.toLocaleString()}</td></tr>`;
+      html += `<tr><td>${n}</td><td>${aSum}</td><td>${lSum}</td><td>${lTot.amount.toLocaleString()}원</td></tr>`;
     });
     html += "</tbody></table>";
     wrap.innerHTML = html;
@@ -302,7 +266,7 @@ window.Admin = {
     const c = document.getElementById("modalContent");
     const title = document.getElementById("modalTitle");
     title.textContent = a.id ? "배치 편집" : "배치 추가";
-    const kinds = ["해설", "연구", "지원", "연구이월", "지원이월"];
+    const kinds = ["해설", "연구", "지원"];
     const forms = ["", "학교체험", "가족체험", "주말어드벤처"];
     const roles = ["", "주", "보조", "토오전", "토오후", "일오전"];
     const opt = (arr, v) => arr.map((x) => `<option ${x === v ? "selected" : ""} value="${x}">${x || "-"}</option>`).join("");
@@ -311,7 +275,8 @@ window.Admin = {
         <label>날짜<input type="date" id="m_date" value="${a.date || ""}"/></label>
         <label>강사
           <select id="m_name">
-            ${["", ...STATE.instructors, "이상우"].map((n) => `<option ${n === (a.name || "") ? "selected" : ""}>${n}</option>`).join("")}
+            ${["", ...(STATE.assignableNames.length ? STATE.assignableNames : STATE.instructors)]
+              .map((n) => `<option ${n === (a.name || "") ? "selected" : ""}>${n}</option>`).join("")}
           </select>
         </label>
         <label>유형 <select id="m_kind">${opt(kinds, a.kind || "해설")}</select></label>
@@ -322,7 +287,7 @@ window.Admin = {
         <label>연구시수 <input type="number" step="0.5" id="m_hR" value="${a.hResearch || 0}"/></label>
       </div>
       <label>메모 <input type="text" id="m_memo" value="${a.memo || ""}" style="width:100%"/></label>
-      ${a.id ? '<p><button type="button" id="m_del" style="color:#c53030">삭제</button></p>' : ""}
+      ${a.id ? '<div><button type="button" id="m_del" class="btn btn-danger">이 배치 삭제</button></div>' : ""}
     `;
     m.classList.remove("hidden");
     document.getElementById("modalCancel").onclick = () => m.classList.add("hidden");

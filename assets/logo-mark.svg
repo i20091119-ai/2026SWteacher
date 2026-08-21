@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 424 240" role="img" aria-label="경남수학문화관 GNMC">
+  <title>경남수학문화관 GNMC</title>
+  <defs>
+    <linearGradient id="s1" x1="1" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#E23B2E"/><stop offset="100%" stop-color="#C10E28"/></linearGradient>
+    <linearGradient id="s2" x1="1" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#F79445"/><stop offset="100%" stop-color="#E8442A"/></linearGradient>
+    <linearGradient id="s3" x1="1" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#7CC64B"/><stop offset="100%" stop-color="#159B45"/></linearGradient>
+    <linearGradient id="s4" x1="1" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#4FB3E8"/><stop offset="100%" stop-color="#0E72C0"/></linearGradient>
+    <linearGradient id="s5" x1="1" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#9B6FC4"/><stop offset="100%" stop-color="#65389B"/></linearGradient>
+    <linearGradient id="gnmcC" x1="0.25" y1="1" x2="0.75" y2="0">
+      <stop offset="0%" stop-color="#C10E28"/>
+      <stop offset="25%" stop-color="#E8442A"/>
+      <stop offset="50%" stop-color="#159B45"/>
+      <stop offset="76%" stop-color="#0E72C0"/>
+      <stop offset="100%" stop-color="#65389B"/>
+    </linearGradient>
+  </defs>
+  <g style="mix-blend-mode:multiply">
+    <polygon points="70.8,94.2 142.5,200.4 14.7,209.4" fill="url(#s1)" stroke="url(#s1)" stroke-width="15" stroke-linejoin="round"/>
+    <polygon points="204.1,19.1 240.9,120.1 139.9,156.9 103.1,55.9" fill="url(#s2)" stroke="url(#s2)" stroke-width="15" stroke-linejoin="round"/>
+    <polygon points="250.0,8.0 301.8,48.6 279.3,110.4 213.5,108.1 195.4,44.8" fill="url(#s3)" stroke="url(#s3)" stroke-width="12" stroke-linejoin="round"/>
+    <polygon points="328.1,45.9 357.1,71.9 349.0,110.1 311.9,122.1 282.9,96.1 291.0,57.9" fill="url(#s4)" stroke="url(#s4)" stroke-width="9" stroke-linejoin="round"/>
+    <circle cx="370" cy="122" r="30" fill="url(#s5)"/>
+  </g>
+  <g>
+    <polygon points="73.3,129.6 110.6,184.9 44.1,189.5" fill="#fff" stroke="#fff" stroke-width="8" stroke-linejoin="round"/>
+    <polygon points="188.1,53.6 206.4,104.1 155.9,122.4 137.6,71.9" fill="#fff" stroke="#fff" stroke-width="8" stroke-linejoin="round"/>
+    <polygon points="248.9,37.1 273.8,56.6 263.0,86.3 231.5,85.2 222.7,54.8" fill="#fff" stroke="#fff" stroke-width="8" stroke-linejoin="round"/>
+    <polygon points="323.7,66.5 337.1,78.5 333.3,96.0 316.3,101.5 302.9,89.5 306.7,72.0" fill="#fff" stroke="#fff" stroke-width="8" stroke-linejoin="round"/>
+    <circle cx="370" cy="122" r="13.2" fill="#fff"/>
+  </g>
+  <text x="120" y="214" font-family="'Pretendard','Noto Sans KR','Malgun Gothic','Apple SD Gothic Neo','Segoe UI',sans-serif" font-size="96" font-weight="900" letter-spacing="-4"><tspan fill="#111">GNM</tspan><tspan fill="url(#gnmcC)">C</tspan></text>
+</svg>
