@@ -109,8 +109,72 @@ window.Admin = {
 
   renderViews() {
     Admin.renderCalendarView();
+    Admin.renderMatrix();
     Admin.renderWeekly();
     Admin.renderSummary();
+  },
+
+  /**
+   * 주(행) × 강사(열) 교차표.
+   * 한 주에 누가 몇 시간인지, 그 주에 누가 비어 있는지를 한 화면에서 본다.
+   */
+  renderMatrix() {
+    const wrap = document.getElementById("admMatrix");
+    if (!wrap) return;
+    const ym = document.getElementById("admMonth").value;
+    const data = Admin.data || { assignments: [] };
+    const ass = data.assignments || [];
+    const filterName = document.getElementById("admFilter").value;
+    const cap = Hours.capForYm(ym);
+
+    if (!ass.length) {
+      wrap.innerHTML = `<div class="muted">${ym}에 배치된 활동이 없습니다.</div>`;
+      return;
+    }
+
+    // 열: 명단 순서. 명단에 없지만 배치가 있는 이름(파견교사 등)은 뒤에 붙인다.
+    const extra = [...new Set(ass.map((a) => a.name))].filter((n) => !STATE.instructors.includes(n));
+    let names = [...STATE.instructors, ...sortKo(extra)];
+    if (filterName) names = names.filter((n) => n === filterName);
+
+    // 행: 그 달을 덮는 모든 주(일요일 시작). 활동이 없는 주도 빈칸으로 보여준다.
+    const [y, mo] = ym.split("-").map(Number);
+    const weeks = [];
+    for (let d = new Date(y, mo - 1, 1); d.getMonth() === mo - 1; d.setDate(d.getDate() + 1)) {
+      const wk = weekStartSun(dateStr(d));
+      if (!weeks.includes(wk)) weeks.push(wk);
+    }
+
+    // (강사, 주) -> 시수
+    const cell = {};
+    ass.forEach((a) => {
+      const k = a.name + "|" + weekStartSun(a.date);
+      cell[k] = (cell[k] || 0) + Number(a.hExplain || 0) + Number(a.hSupport || 0) + Number(a.hResearch || 0);
+    });
+
+    const colTotal = {};
+    let grand = 0;
+    let html = `<p class="muted" style="margin-bottom:10px">주간 상한: <b>${cap}h</b></p>`;
+    html += `<div class="matrix-wrap"><table class="matrix"><thead><tr><th>주 시작(일)</th>` +
+      names.map((n) => `<th>${nameLabel(n)}</th>`).join("") + `<th>주 합계</th></tr></thead><tbody>`;
+
+    weeks.forEach((wk) => {
+      let rowTotal = 0;
+      const cells = names.map((n) => {
+        const v = cell[n + "|" + wk] || 0;
+        rowTotal += v;
+        colTotal[n] = (colTotal[n] || 0) + v;
+        if (v === 0) return `<td class="m-zero">·</td>`;
+        return `<td class="${v > cap ? "warn" : ""}">${fmtH(v)}</td>`;
+      }).join("");
+      grand += rowTotal;
+      html += `<tr><th scope="row">${wk}</th>${cells}<td class="m-total">${rowTotal ? fmtH(rowTotal) : "·"}</td></tr>`;
+    });
+
+    html += `</tbody><tfoot><tr><th scope="row">월 합계</th>` +
+      names.map((n) => `<td class="m-total">${colTotal[n] ? fmtH(colTotal[n]) : "·"}</td>`).join("") +
+      `<td class="m-total">${fmtH(grand)}</td></tr></tfoot></table></div>`;
+    wrap.innerHTML = html;
   },
 
   renderCalendarView() {
