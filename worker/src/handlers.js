@@ -293,12 +293,26 @@ export async function deleteAssignment(db, ctx, p) {
 }
 
 // 금액 관리를 하지 않으므로 단가 설정은 없앴다. 남은 건 주간 상한뿐.
-const ALLOWED_SETTINGS = ["weeklyCap"];
+/**
+ * 바꿀 수 있는 설정 키.
+ *  - `weeklyCap`            기본 주간 상한
+ *  - `weeklyCap.YYYY-MM`    그 달만 다르게 줄 때 (화면의 Hours.capForYm 이 우선 적용한다)
+ */
+function isAllowedSettingKey(key) {
+  if (key === "weeklyCap") return true;
+  if (key.indexOf("weeklyCap.") !== 0) return false;
+  try {
+    assertYm(key.slice("weeklyCap.".length));
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export async function setSetting(db, ctx, p) {
   requireAdmin(ctx);
   const key = str(p.key, 60);
-  if (!ALLOWED_SETTINGS.includes(key)) throw bad(`수정할 수 없는 설정 키입니다: ${key}`);
+  if (!isAllowedSettingKey(key)) throw bad(`수정할 수 없는 설정 키입니다: ${key}`);
   const value = str(p.value, 200);
   if (!/^\d+(\.\d+)?$/.test(value)) throw bad("설정 값은 숫자여야 합니다");
   await db.prepare(
@@ -648,7 +662,7 @@ export async function importAll(db, ctx, p) {
       });
       return;
     }
-    if (ALLOWED_SETTINGS.includes(key)) {
+    if (isAllowedSettingKey(key)) {
       push("settings", db.prepare(
         `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,

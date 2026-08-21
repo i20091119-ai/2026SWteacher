@@ -695,3 +695,27 @@ describe("폐지된 이월 기록", () => {
     assert.equal(a.carry, undefined, "carry 는 더 이상 API 로 나가지 않는다");
   });
 });
+
+describe("월별 주간 상한 (weeklyCap.YYYY-MM)", () => {
+  test("특정 달만 다른 상한을 둘 수 있다", async () => {
+    await must("setSetting", { key: "weeklyCap.2026-06", value: "14" }, { token: adminToken });
+    const d = await must("bootstrap");
+    assert.equal(d.settings["weeklyCap.2026-06"], "14");
+    assert.equal(d.settings["weeklyCap"], "20", "기본 상한은 그대로");
+  });
+
+  test("이관에서도 그대로 받아들인다", async () => {
+    const d = await must("importAll", {
+      settings: [{ key: "weeklyCap.2026-06", value: "14" }, { key: "weeklyCap", value: "20" }],
+    }, { token: adminToken });
+    assert.deepEqual(d.errors, [], "월별 상한이 '알 수 없는 키'로 버려지면 안 된다");
+    assert.equal(d.counts.settings, 2);
+  });
+
+  test("월 형식이 아니면 거부된다", async () => {
+    for (const key of ["weeklyCap.2026", "weeklyCap.2026-13", "weeklyCap.전체"]) {
+      const r = await call("setSetting", { key, value: "14" }, { token: adminToken });
+      assert.equal(r.ok, false, key);
+    }
+  });
+});
