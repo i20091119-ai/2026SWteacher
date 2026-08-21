@@ -12,17 +12,56 @@
 
 ---
 
+## 0. 저장소와 Node.js 준비 (한 번만)
+
+### Node.js 22 이상
+
+Wrangler(Cloudflare 배포 도구)는 **Node.js 22 이상**을 요구합니다.
+`node -v` 가 v22 미만이면 먼저 올려야 합니다.
+
+```powershell
+node -v                              # v22.x.x 이상이어야 함
+
+# 낮으면 (Windows)
+winget install OpenJS.NodeJS.LTS
+# 또는 https://nodejs.org 에서 LTS 설치본 내려받기
+```
+
+> 설치 후 **PowerShell 창을 닫았다 다시 열어야** 새 버전이 잡힙니다.
+
+### 저장소 내려받기
+
+`cd worker` 는 저장소 폴더 안에서만 됩니다.
+`C:\Users\...>` 같은 홈 폴더에서 실행하면 "경로를 찾을 수 없습니다" 가 납니다.
+
+```powershell
+cd $HOME\Documents
+git clone https://github.com/i20091119-ai/2026SWteacher.git
+cd 2026SWteacher
+```
+
+> `git` 이 없다면: `winget install Git.Git` 후 창을 다시 엽니다.
+
+아직 작업 브랜치가 `main` 에 합쳐지기 전이라면 브랜치를 받아야 `worker` 폴더가 보입니다.
+
+```powershell
+git checkout claude/dedicated-database-migration-iw913y
+dir                                  # worker 폴더가 보이면 정상
+```
+
 ## 1. Cloudflare 준비 (한 번만)
 
 1. https://dash.cloudflare.com 에서 무료 계정을 만듭니다.
-2. 컴퓨터에 Node.js 18 이상을 설치합니다.
-3. 터미널에서:
+2. 저장소 폴더 안에서:
 
-```bash
-cd worker
+```powershell
+cd worker                   # 반드시 2026SWteacher 폴더 안에서
 npm install
 npx wrangler login          # 브라우저가 열리고 계정 연결을 승인
 ```
+
+> 이후 2~5단계 명령은 **전부 `worker` 폴더 안에서** 실행합니다.
+> 헷갈리면 `pwd` 로 현재 위치가 `...\2026SWteacher\worker` 인지 확인하세요.
 
 ## 2. 데이터베이스 만들기
 

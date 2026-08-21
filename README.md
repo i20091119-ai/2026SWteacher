@@ -4,6 +4,8 @@ GitHub Pages(정적 프론트엔드) + **Cloudflare Workers + D1**(전용 데이
 
 ## 빠른 시작
 
+> **Node.js 22 이상**이 필요합니다 (`node -v` 로 확인). Wrangler 4 의 요구사항입니다.
+
 1. [`docs/DEPLOY.md`](docs/DEPLOY.md) — Cloudflare D1 생성 · 워커 배포 · Google OAuth 설정
 2. [`docs/MIGRATION.md`](docs/MIGRATION.md) — 기존 구글시트 데이터 옮기기
 3. 로컬 미리보기: `node tools/dev-server.mjs` → http://localhost:8787
