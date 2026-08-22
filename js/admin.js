@@ -149,7 +149,7 @@ window.Admin = {
     const cell = {};
     ass.forEach((a) => {
       const k = a.name + "|" + weekStartSun(a.date);
-      cell[k] = (cell[k] || 0) + Number(a.hExplain || 0) + Number(a.hSupport || 0) + Number(a.hResearch || 0);
+      cell[k] = (cell[k] || 0) + hoursOf(a);
     });
 
     const colTotal = {};
@@ -216,9 +216,16 @@ window.Admin = {
           const s = document.createElement("div");
           s.className = `slot kind-${Admin.kindClass(a.kind)}`;
           s.dataset.stop = "1";
-          const h = Number(a.hExplain || 0) + Number(a.hSupport || 0) + Number(a.hResearch || 0);
+          const h = hoursOf(a);
           const label = a.kind + (a.form ? "·" + a.form : "") + (a.role ? "·" + a.role : "");
-          s.innerHTML = `${label} · ${nameLabel(a.name)} (${h}h)`;
+          s.innerHTML = `${label} · ${nameLabel(a.name)} (${fmtH(h)}h)`;
+          const bd = STANDARD_HOURS.label(a);
+          if (bd) {
+            const d = document.createElement("div");
+            d.className = "slot-breakdown";
+            d.textContent = bd;
+            s.appendChild(d);
+          }
           if (a.memo && String(a.memo).trim()) {
             const m = document.createElement("div");
             m.className = "slot-memo";
@@ -249,22 +256,36 @@ window.Admin = {
     const ym = document.getElementById("admMonth").value;
     const data = Admin.data || { assignments: [] };
     const filterName = document.getElementById("admFilter").value;
-    const view = Hours.weeklyView(ym, data.assignments || []);
-    const names = Object.keys(view).filter((n) => !filterName || n === filterName).sort((a, b) => a.localeCompare(b, "ko"));
+    const ass = (data.assignments || []).filter((a) => !filterName || a.name === filterName);
+    if (!ass.length) { wrap.innerHTML = '<div class="muted">데이터 없음</div>'; return; }
+
     const cap = Hours.capForYm(ym);
-    let html = `<p class="muted" style="margin-bottom:10px">주간 상한: <b>${cap}h</b> — 초과한 주는 빨강으로 표시됩니다.</p>`;
-    names.forEach((n) => {
+    // 강사 -> 주 -> 유형별 시수
+    const map = {};
+    ass.forEach((a) => {
+      const wk = weekStartSun(a.date);
+      ((map[a.name] ||= {})[wk] ||= { total: 0, byKind: {} });
+      const w = map[a.name][wk];
+      const h = hoursOf(a);
+      w.total += h;
+      w.byKind[a.kind] = (w.byKind[a.kind] || 0) + h;
+    });
+    const kinds = [...new Set(ass.map((a) => a.kind))].sort();
+
+    let html = `<p class="muted" style="margin-bottom:10px">주간 상한: <b>${cap}h</b></p>`;
+    sortKo(Object.keys(map)).forEach((n) => {
       html += `<h3>${nameLabel(n)}</h3>`;
-      html += `<table><thead><tr><th>주 시작(일)</th><th>해설</th><th>지원</th><th>연구</th><th>합계</th><th>초과</th></tr></thead><tbody>`;
-      view[n].forEach((w) => {
-        html += `<tr class="${w.over > 0 ? "warn" : ""}">
-          <td>${w.wkStart}</td><td>${fmtH(w.hExplain)}</td><td>${fmtH(w.hSupport)}</td><td>${fmtH(w.hResearch)}</td>
-          <td><b>${fmtH(w.total)}</b></td><td>${w.over > 0 ? `<b>${fmtH(w.over)}h</b>` : "—"}</td>
-        </tr>`;
+      html += `<table><thead><tr><th>주 시작(일)</th>${kinds.map((k) => `<th>${k}</th>`).join("")}<th>합계</th><th>초과</th></tr></thead><tbody>`;
+      Object.keys(map[n]).sort().forEach((wk) => {
+        const w = map[n][wk];
+        const over = Math.max(0, w.total - cap);
+        html += `<tr class="${over > 0 ? "warn" : ""}"><td>${wk}</td>` +
+          kinds.map((k) => `<td>${w.byKind[k] ? fmtH(w.byKind[k]) : "·"}</td>`).join("") +
+          `<td><b>${fmtH(w.total)}</b></td><td>${over > 0 ? `<b>${fmtH(over)}h</b>` : "—"}</td></tr>`;
       });
       html += `</tbody></table>`;
     });
-    wrap.innerHTML = html === "" ? '<div class="muted">데이터 없음</div>' : html;
+    wrap.innerHTML = html;
   },
 
   renderSummary() {
@@ -275,8 +296,7 @@ window.Admin = {
     // 유형별 시수
     const byKind = {};
     ass.forEach((a) => {
-      const h = Number(a.hExplain || 0) + Number(a.hSupport || 0) + Number(a.hResearch || 0);
-      byKind[a.kind] = (byKind[a.kind] || 0) + h;
+      byKind[a.kind] = (byKind[a.kind] || 0) + hoursOf(a);
     });
     let html = `<h3>유형별 시수 (${ym})</h3>`;
     const kindNames = Object.keys(byKind).sort();
@@ -289,15 +309,14 @@ window.Admin = {
     // 강사별 월 합계
     const totals = Hours.monthTotals(ass);
     html += "<h3>강사별 월 합계</h3>";
-    html += "<table><thead><tr><th>강사</th><th>해설</th><th>지원</th><th>연구</th><th>합계</th></tr></thead><tbody>";
-    STATE.instructors.forEach((n) => {
-      const t = totals[n] || { hExplain: 0, hSupport: 0, hResearch: 0, total: 0 };
-      html += `<tr><td>${nameLabel(n)}</td><td>${fmtH(t.hExplain)}</td><td>${fmtH(t.hSupport)}</td><td>${fmtH(t.hResearch)}</td><td><b>${fmtH(t.total)}h</b></td></tr>`;
-    });
-    // 명단에 없는 이름(파견교사 등)도 배치가 있으면 함께 보여준다
-    Object.keys(totals).filter((n) => !STATE.instructors.includes(n)).forEach((n) => {
-      const t = totals[n];
-      html += `<tr><td>${nameLabel(n)}</td><td>${fmtH(t.hExplain)}</td><td>${fmtH(t.hSupport)}</td><td>${fmtH(t.hResearch)}</td><td><b>${fmtH(t.total)}h</b></td></tr>`;
+    const kindCols = kindNames.length ? kindNames : ["해설", "연구", "지원"];
+    html += `<table><thead><tr><th>강사</th>${kindCols.map((k) => `<th>${k}</th>`).join("")}<th>합계</th></tr></thead><tbody>`;
+    const extra = Object.keys(totals).filter((n) => !STATE.instructors.includes(n));
+    [...STATE.instructors, ...sortKo(extra)].forEach((n) => {
+      const t = totals[n] || { byKind: {}, total: 0 };
+      html += `<tr><td>${nameLabel(n)}</td>` +
+        kindCols.map((k) => `<td>${t.byKind[k] ? fmtH(t.byKind[k]) : "·"}</td>`).join("") +
+        `<td><b>${fmtH(t.total)}h</b></td></tr>`;
     });
     html += "</tbody></table>";
     wrap.innerHTML = html;
@@ -343,12 +362,11 @@ window.Admin = {
         <label>유형 <select id="m_kind">${opt(kinds, a.kind || "해설")}</select></label>
         <label>형태 <select id="m_form">${opt(forms, a.form || "")}</select></label>
         <label>역할 <select id="m_role">${opt(roles, a.role || "")}</select></label>
-        <label>해설시수 <input type="number" step="0.5" id="m_hE" value="${a.hExplain || 0}"/></label>
-        <label>지원시수 <input type="number" step="0.5" id="m_hS" value="${a.hSupport || 0}"/></label>
-        <label>연구시수 <input type="number" step="0.5" id="m_hR" value="${a.hResearch || 0}"/></label>
+        <label>시수 <input type="number" step="0.5" min="0" id="m_h" value="${a.hours || 0}"/></label>
+        <label>내역 <output id="m_breakdown" class="breakdown"></output></label>
       </div>
       ${namesHtml}
-      <p class="muted" style="margin-top:8px">형태 선택 시 표준 시수가 자동으로 채워집니다(연구·지원 유형은 직접 입력).</p>
+      <p class="muted" style="margin-top:8px">형태를 고르면 표준 시수가 자동으로 채워집니다. 내역(해설·지원)은 활동결과를 수기로 옮겨 적을 때 쓰라고 함께 보여줍니다.</p>
       <label>메모 <input type="text" id="m_memo" value="${a.memo || ""}" style="width:100%"/></label>
       ${isEdit ? '<p><button type="button" id="m_del" style="color:#c53030">삭제</button></p>' : ""}
     `;
@@ -357,6 +375,8 @@ window.Admin = {
     document.getElementById("m_kind").onchange = apply;
     document.getElementById("m_form").onchange = apply;
     document.getElementById("m_role").onchange = apply;
+    document.getElementById("m_h").oninput = () => Admin.renderBreakdown();
+    Admin.renderBreakdown();
     m.classList.remove("hidden");
     document.getElementById("modalCancel").onclick = () => m.classList.add("hidden");
     document.getElementById("modalSave").onclick = async () => {
@@ -365,9 +385,12 @@ window.Admin = {
         kind: document.getElementById("m_kind").value,
         form: document.getElementById("m_form").value,
         role: document.getElementById("m_role").value,
-        hExplain: Number(document.getElementById("m_hE").value || 0),
-        hSupport: Number(document.getElementById("m_hS").value || 0),
-        hResearch: Number(document.getElementById("m_hR").value || 0),
+        ...STANDARD_HOURS.split(
+          document.getElementById("m_kind").value,
+          document.getElementById("m_form").value,
+          document.getElementById("m_role").value,
+          document.getElementById("m_h").value,
+        ),
         memo: document.getElementById("m_memo").value,
       };
       if (!common.date || !common.kind) { alert("날짜·유형은 필수입니다."); return; }
@@ -577,23 +600,28 @@ window.Admin = {
   },
 
   // 형태별 표준 시수 자동 채움 (해설 kind에만 적용)
+  /** 형태별 표준 시수 자동 채움. 입력은 합계 하나만 받는다. */
   applyDefaultHours() {
     const kind = document.getElementById("m_kind").value;
     const form = document.getElementById("m_form").value;
     const role = document.getElementById("m_role").value;
-    if (kind !== "해설") return;
-    let hE = null, hS = null, hR = null;
-    if (form === "가족체험" || form === "학교체험") {
-      hE = 3; hS = 0; hR = 0;
-    } else if (form === "주말어드벤처") {
-      // 일오전 = 해설 3h + 지원 1h (도합 4h)
-      // 토오전/토오후 = 해설 3h + 지원 0.5h
-      hE = 3; hS = (role === "일오전") ? 1 : 0.5; hR = 0;
-    } else {
-      return;
-    }
-    document.getElementById("m_hE").value = hE;
-    document.getElementById("m_hS").value = hS;
-    document.getElementById("m_hR").value = hR;
+    const h = STANDARD_HOURS.total(kind, form, role);
+    if (h !== null) document.getElementById("m_h").value = h;
+    Admin.renderBreakdown();
+  },
+
+  /** 입력한 합계가 해설·지원으로 어떻게 나뉘는지 보여준다. */
+  renderBreakdown() {
+    const el = document.getElementById("m_breakdown");
+    if (!el) return;
+    const s = STANDARD_HOURS.split(
+      document.getElementById("m_kind").value,
+      document.getElementById("m_form").value,
+      document.getElementById("m_role").value,
+      document.getElementById("m_h").value,
+    );
+    const text = STANDARD_HOURS.label(s);
+    el.textContent = text || "—";
+    el.classList.toggle("breakdown-on", !!text);
   },
 };

@@ -719,3 +719,42 @@ describe("월별 주간 상한 (weeklyCap.YYYY-MM)", () => {
     }
   });
 });
+
+describe("시수 입력 — 합계 하나로 받기", () => {
+  test("유형에 맞는 칸에 담기고, 합계(hours)로 되돌아온다", async () => {
+    const cases = [
+      { kind: "해설", hours: 3,   expect: { hExplain: 3, hSupport: 0, hResearch: 0 } },
+      { kind: "지원", hours: 2.5, expect: { hExplain: 0, hSupport: 2.5, hResearch: 0 } },
+      { kind: "연구", hours: 4,   expect: { hExplain: 0, hSupport: 0, hResearch: 4 } },
+    ];
+    for (const c of cases) {
+      const { id } = await must("saveAssignment",
+        { date: "2026-06-10", kind: c.kind, name: "김경화", hours: c.hours }, { token: adminToken });
+      const m = await must("getMonth", { ym: "2026-06" });
+      const a = m.assignments.find((x) => x.id === id);
+      assert.equal(a.hours, c.hours, c.kind);
+      assert.equal(a.hExplain, c.expect.hExplain, c.kind);
+      assert.equal(a.hSupport, c.expect.hSupport, c.kind);
+      assert.equal(a.hResearch, c.expect.hResearch, c.kind);
+    }
+  });
+
+  test("해설·지원이 나뉜 과거 행은 내역이 보존되고 hours 는 그 합계다", async () => {
+    // 주말어드벤처 = 해설 3h + 지원 0.5h 로 저장된 시트 데이터
+    await must("saveAssignment", {
+      date: "2026-06-13", kind: "해설", form: "주말어드벤처", role: "토오전",
+      name: "김경화", hExplain: 3, hSupport: 0.5,
+    }, { token: adminToken });
+    const m = await must("getMonth", { ym: "2026-06" });
+    const a = m.assignments[0];
+    assert.equal(a.hExplain, 3);
+    assert.equal(a.hSupport, 0.5);
+    assert.equal(a.hours, 3.5, "합계는 3.5h");
+  });
+
+  test("시수 0 은 거부된다", async () => {
+    const r = await call("saveAssignment",
+      { date: "2026-06-10", kind: "해설", name: "김경화", hours: 0 }, { token: adminToken });
+    assert.equal(r.ok, false);
+  });
+});

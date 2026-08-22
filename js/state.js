@@ -86,6 +86,14 @@ window.STATE.restoreMonthCache = function (ym) {
   return null;
 };
 
+// 배치 한 건의 시수.
+// 서버가 hours 를 내려주지만, 시트에서 넘어온 과거 행은 해설/지원이 쪼개져
+// 있을 수 있어 합계로 계산한다.
+window.hoursOf = function (a) {
+  if (a && a.hours !== undefined && a.hours !== null) return Number(a.hours) || 0;
+  return Number((a && a.hExplain) || 0) + Number((a && a.hSupport) || 0) + Number((a && a.hResearch) || 0);
+};
+
 // 시수 표기 — 3, 3.5 처럼 필요한 만큼만
 window.fmtH = function (n) {
   const r = Math.round(Number(n || 0) * 10) / 10;

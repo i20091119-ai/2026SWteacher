@@ -3,7 +3,8 @@
  * 시트 백엔드의 "전체 읽기 → 자바스크립트 필터 → 행 번호 찾아 쓰기" 패턴은 모두 제거됐다.
  */
 import {
-  bad, denied, missing, assertYm, assertDate, monthRange, nowIso, str, num, hours,
+  bad, denied, missing, assertYm, assertDate, monthRange, nowIso, str, num,
+  hours as hoursValue,
 } from "./util.js";
 import { verifyGoogleIdToken, issueSession, requireAdmin, requireInstructor } from "./auth.js";
 
@@ -28,6 +29,9 @@ const mapAssignment = (r) => ({
   hExplain: num(r.h_explain),
   hSupport: num(r.h_support),
   hResearch: num(r.h_research),
+  // 화면은 이 합계만 쓴다. 세 컬럼은 시트에서 넘어온 과거 행
+  // (예: 주말어드벤처 = 해설 3h + 지원 0.5h)의 내역 보존용이다.
+  hours: num(r.h_explain) + num(r.h_support) + num(r.h_research),
   memo: r.memo || "",
 });
 const mapSwap = (r) => ({
@@ -225,10 +229,21 @@ async function normalizeAssignment(db, p) {
   if (!FORMS.includes(form)) throw bad(`형태가 올바르지 않습니다: ${form}`);
   if (!ROLES.includes(role)) throw bad(`역할이 올바르지 않습니다: ${role}`);
   await assertAssignable(db, name);
-  const hE = hours(p.hExplain);
-  const hS = hours(p.hSupport);
-  const hR = hours(p.hResearch);
-  if (hE + hS + hR <= 0) throw bad("시수를 하나 이상 입력하세요");
+
+  // 시수는 하나만 받는다. 유형이 이미 해설/연구/지원을 가리키므로 나눌 이유가 없다.
+  // (hExplain/hSupport/hResearch 로 오는 요청도 받아준다 — 이관 데이터 경로)
+  let hE = 0, hS = 0, hR = 0;
+  if (p.hours !== undefined && p.hours !== null && p.hours !== "") {
+    const h = hoursValue(p.hours);
+    if (kind === "지원" || kind === "지원이월") hS = h;
+    else if (kind === "연구" || kind === "연구이월") hR = h;
+    else hE = h;
+  } else {
+    hE = hoursValue(p.hExplain);
+    hS = hoursValue(p.hSupport);
+    hR = hoursValue(p.hResearch);
+  }
+  if (hE + hS + hR <= 0) throw bad("시수를 입력하세요");
   return { date, name, kind, form, role, hE, hS, hR, memo: str(p.memo, 500) };
 }
 
@@ -597,7 +612,7 @@ export async function importAll(db, ctx, p) {
          h_support=excluded.h_support, h_research=excluded.h_research, memo=excluded.memo,
          carry=excluded.carry, updated_at=excluded.updated_at`,
     ).bind(id, date, kind, form, role, name,
-      hours(r.hExplain ?? r.h_explain), hours(r.hSupport ?? r.h_support), hours(r.hResearch ?? r.h_research),
+      hoursValue(r.hExplain ?? r.h_explain), hoursValue(r.hSupport ?? r.h_support), hoursValue(r.hResearch ?? r.h_research),
       str(r.memo, 500), r.carry === true || r.carry === 1 || String(r.carry).toUpperCase() === "TRUE" ? 1 : 0,
       nowIso()));
   }));

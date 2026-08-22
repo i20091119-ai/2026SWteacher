@@ -240,9 +240,17 @@ window.Instructor = {
           let cls = `slot kind-${String(a.kind || "").replace("이월", "")}`;
           if (a.name === me) cls += " mine";
           s.className = cls;
-          const h = Number(a.hExplain || 0) + Number(a.hSupport || 0) + Number(a.hResearch || 0);
+          const h = hoursOf(a);
           const label = a.kind + (a.form ? "·" + a.form : "") + (a.role ? "·" + a.role : "");
-          s.innerHTML = `${label} · ${nameLabel(a.name)} (${h}h)`;
+          s.innerHTML = `${label} · ${nameLabel(a.name)} (${fmtH(h)}h)`;
+          // 해설·지원이 나뉘는 활동은 내역을 함께 적는다 (수기 활동결과 작성용)
+          const bd = STANDARD_HOURS.label(a);
+          if (bd) {
+            const d = document.createElement("div");
+            d.className = "slot-breakdown";
+            d.textContent = bd;
+            s.appendChild(d);
+          }
           if (a.memo && String(a.memo).trim()) {
             const m = document.createElement("div");
             m.className = "slot-memo";
@@ -369,27 +377,21 @@ window.Instructor = {
     const view = viewMap[me] || [];
     const fmt = fmtH;
     let html = `<p class="muted" style="margin-bottom:8px">주간 상한: <b>${cap}h</b></p>`;
-    html += `<table><thead><tr>
-      <th>주 시작(일)</th><th>해설</th><th>지원</th><th>연구</th><th>합계</th><th>초과</th>
-    </tr></thead><tbody>`;
-    let tE = 0, tS = 0, tR = 0;
+    const kinds = [...new Set(myAssignments.map((a) => a.kind))].sort();
+    html += `<table><thead><tr><th>주 시작(일)</th>${kinds.map((k) => `<th>${k}</th>`).join("")}<th>합계</th><th>초과</th></tr></thead><tbody>`;
+    const monthByKind = {};
+    let monthTotal = 0;
     view.forEach((w) => {
-      const tag = w.over > 0 ? "warn" : "";
-      tE += w.hExplain; tS += w.hSupport; tR += w.hResearch;
-      html += `<tr class="${tag}">
-        <td>${w.wkStart}</td>
-        <td>${fmt(w.hExplain)}</td>
-        <td>${fmt(w.hSupport)}</td>
-        <td>${fmt(w.hResearch)}</td>
-        <td><b>${fmt(w.total)}</b></td>
-        <td>${w.over > 0 ? `<b>${fmt(w.over)}h</b>` : "—"}</td>
-      </tr>`;
+      monthTotal += w.total;
+      kinds.forEach((k) => { monthByKind[k] = (monthByKind[k] || 0) + (w.byKind[k] || 0); });
+      html += `<tr class="${w.over > 0 ? "warn" : ""}"><td>${w.wkStart}</td>` +
+        kinds.map((k) => `<td>${w.byKind[k] ? fmt(w.byKind[k]) : "·"}</td>`).join("") +
+        `<td><b>${fmt(w.total)}</b></td><td>${w.over > 0 ? `<b>${fmt(w.over)}h</b>` : "—"}</td></tr>`;
     });
     html += `</tbody></table>`;
-    html += `<p style="margin-top:10px;font-size:14px">
-      <b>${ym} 월 합계</b> · 해설 ${fmt(tE)}h · 지원 ${fmt(tS)}h · 연구 ${fmt(tR)}h
-      · <b>총 ${fmt(tE + tS + tR)}h</b>
-    </p>`;
+    html += `<p style="margin-top:10px;font-size:14px"><b>${ym} 월 합계</b> · ` +
+      kinds.map((k) => `${k} ${fmt(monthByKind[k])}h`).join(" · ") +
+      ` · <b>총 ${fmt(monthTotal)}h</b></p>`;
     wrap.innerHTML = html;
   }
 };
