@@ -758,3 +758,27 @@ describe("시수 입력 — 합계 하나로 받기", () => {
     assert.equal(r.ok, false);
   });
 });
+
+describe("주말어드벤처 토종일", () => {
+  test("토종일 역할로 배치할 수 있다", async () => {
+    const { id } = await must("saveAssignment", {
+      date: "2026-06-13", kind: "해설", form: "주말어드벤처", role: "토종일",
+      name: "김경화", hExplain: 6, hSupport: 1,
+    }, { token: adminToken });
+    const m = await must("getMonth", { ym: "2026-06" });
+    const a = m.assignments.find((x) => x.id === id);
+    assert.equal(a.role, "토종일");
+    assert.equal(a.hours, 7, "오전(3.5) + 오후(3.5) = 7h");
+    assert.equal(a.hExplain, 6);
+    assert.equal(a.hSupport, 1);
+  });
+
+  test("알 수 없는 역할은 여전히 거부된다", async () => {
+    const r = await call("saveAssignment", {
+      date: "2026-06-13", kind: "해설", form: "주말어드벤처", role: "토야간",
+      name: "김경화", hours: 3,
+    }, { token: adminToken });
+    assert.equal(r.ok, false);
+    assert.equal(r.status, 400);
+  });
+});

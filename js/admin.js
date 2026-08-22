@@ -335,7 +335,7 @@ window.Admin = {
     title.textContent = isEdit ? "배치 편집" : "배치 추가";
     const kinds = ["해설", "연구", "지원"];
     const forms = ["", "학교체험", "가족체험", "주말어드벤처"];
-    const roles = ["", "주", "보조", "토오전", "토오후", "일오전"];
+    const roles = ["", "주", "보조", "토오전", "토오후", "토종일", "일오전"];
     const opt = (arr, v) => arr.map((x) => `<option ${x === v ? "selected" : ""} value="${x}">${x || "-"}</option>`).join("");
 
     // 강사 영역: 신규는 다중 체크박스, 편집은 단일 select

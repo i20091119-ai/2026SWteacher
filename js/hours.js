@@ -3,29 +3,48 @@
 /**
  * 형태·역할별 표준 시수. 총 시수 안에 해설/지원이 얼마씩인지 정한다.
  * 앱은 합계만 쓰지만, 강사가 활동결과를 수기로 옮겨 적을 때 이 내역이 필요하다.
- *   가족체험 · 학교체험      → 해설 3h
- *   주말어드벤처 토오전/토오후 → 해설 3h + 지원 0.5h
- *   주말어드벤처 일오전        → 해설 3h + 지원 1h
+ *
+ *   가족체험 · 학교체험          → 해설 3h                 (3h)
+ *   주말어드벤처 토오전 / 토오후 → 해설 3h + 지원 0.5h     (3.5h)
+ *   주말어드벤처 토종일          → 해설 6h + 지원 1h       (7h, 오전+오후)
+ *   주말어드벤처 일오전          → 해설 3h + 지원 1h       (4h)
  */
 window.STANDARD_HOURS = {
-  supportPart(kind, form, role) {
-    if (kind !== "해설" || form !== "주말어드벤처") return 0;
-    return role === "일오전" ? 1 : 0.5;
+  // 형태 -> 역할 -> { explain, support }.  역할이 ""(공란)이면 DEFAULT 를 쓴다.
+  TABLE: {
+    "가족체험":     { DEFAULT: { explain: 3, support: 0 } },
+    "학교체험":     { DEFAULT: { explain: 3, support: 0 } },
+    "주말어드벤처": {
+      "토오전": { explain: 3, support: 0.5 },
+      "토오후": { explain: 3, support: 0.5 },
+      "토종일": { explain: 6, support: 1 },
+      "일오전": { explain: 3, support: 1 },
+    },
   },
-  total(kind, form, role) {
+
+  entry(kind, form, role) {
     if (kind !== "해설") return null;
-    if (form === "가족체험" || form === "학교체험") return 3;
-    if (form === "주말어드벤처") return 3 + STANDARD_HOURS.supportPart(kind, form, role);
-    return null;
+    const byRole = STANDARD_HOURS.TABLE[form];
+    if (!byRole) return null;
+    return byRole[role] || byRole.DEFAULT || null;
   },
+
+  /** 표준 총 시수. 정해진 게 없으면 null. */
+  total(kind, form, role) {
+    const e = STANDARD_HOURS.entry(kind, form, role);
+    return e ? e.explain + e.support : null;
+  },
+
   /** 총 시수를 유형·형태·역할에 맞게 해설/지원/연구로 나눈다. */
   split(kind, form, role, total) {
     const h = Number(total) || 0;
     if (kind === "지원" || kind === "지원이월") return { hExplain: 0, hSupport: h, hResearch: 0 };
     if (kind === "연구" || kind === "연구이월") return { hExplain: 0, hSupport: 0, hResearch: h };
-    const sup = Math.min(STANDARD_HOURS.supportPart(kind, form, role), h);
+    const e = STANDARD_HOURS.entry(kind, form, role);
+    const sup = Math.min(e ? e.support : 0, h);   // 시수를 줄여 잡으면 지원 몫부터 깎인다
     return { hExplain: h - sup, hSupport: sup, hResearch: 0 };
   },
+
   /** "해설 3h · 지원 0.5h" 처럼 사람이 읽을 내역. 쪼갤 게 없으면 빈 문자열. */
   label(a) {
     const parts = [];

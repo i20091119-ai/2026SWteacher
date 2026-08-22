@@ -16,7 +16,7 @@ const KINDS = ["해설", "연구", "지원"];
 const LEGACY_KINDS = ["연구이월", "지원이월"];
 const ALL_KINDS = KINDS.concat(LEGACY_KINDS);
 const FORMS = ["", "학교체험", "가족체험", "주말어드벤처"];
-const ROLES = ["", "주", "보조", "토오전", "토오후", "일오전"];
+const ROLES = ["", "주", "보조", "토오전", "토오후", "토종일", "일오전"];
 
 /** ===== 행 매핑 (snake_case DB → camelCase 프론트엔드) ===== */
 const mapAssignment = (r) => ({
